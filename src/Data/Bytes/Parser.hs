@@ -22,7 +22,9 @@ module Data.Bytes.Parser
   , parseByteArray
   , parseBytes
     -- * Build Parsers
+  , failure
   , ascii
+  , anyAscii
   , decWord
   , decWord8
   , decWord16
@@ -48,7 +50,7 @@ import Data.Char (ord)
 import Data.Kind (Type)
 import GHC.ST (ST(..),runST)
 import GHC.Exts (Word(W#),Word#,TYPE,State#,Int#,ByteArray#)
-import GHC.Exts (Int(I#),RuntimeRep)
+import GHC.Exts (Int(I#),Char(C#),chr#,RuntimeRep)
 import GHC.Word (Word16(W16#),Word8(W8#),Word32(W32#))
 import Data.Bytes.Types (Bytes(..))
 import Data.Primitive (ByteArray(..))
@@ -170,6 +172,23 @@ ascii e !c = uneffectful $ \chunk -> if length chunk > 0
   then if PM.indexByteArray (array chunk) (offset chunk) == c2w c
     then Success () (offset chunk + 1) (length chunk - 1)
     else Failure e
+  else Failure e
+
+failure :: e -> Parser e s a
+failure e = uneffectful $ \_ -> Failure e
+
+-- | Interpret the next byte as an ASCII-encoded character.
+-- Fails if the byte corresponds to a number above 127.
+anyAscii :: e -> Parser e s Char
+anyAscii e = uneffectful $ \chunk -> if length chunk > 0
+  then
+    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
+     in if w < 128
+          then Success
+                 (C# (chr# (unI (fromIntegral w))))
+                 (offset chunk + 1)
+                 (length chunk - 1)
+          else Failure e
   else Failure e
 
 -- | Skip ASCII-encoded digits until a non-digit is encountered.
