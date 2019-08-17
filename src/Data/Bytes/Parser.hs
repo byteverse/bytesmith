@@ -1,10 +1,13 @@
 {-# language BangPatterns #-}
+{-# language BinaryLiterals #-}
 {-# language DataKinds #-}
 {-# language DeriveFunctor #-}
 {-# language DerivingStrategies #-}
 {-# language GADTSyntax #-}
 {-# language KindSignatures #-}
+{-# language LambdaCase #-}
 {-# language MagicHash #-}
+{-# language MultiWayIf #-}
 {-# language PolyKinds #-}
 {-# language RankNTypes #-}
 {-# language ScopedTypeVariables #-}
@@ -21,36 +24,60 @@ module Data.Bytes.Parser
     -- * Run Parsers
   , parseByteArray
   , parseBytes
+  , parseBytesST
     -- * Build Parsers
   , failure
+  , peekAnyAscii
   , ascii
+  , ascii3
+  , ascii4
+  , any
   , anyAscii
+  , anyAscii#
+  , anyUtf8#
+  , anyAsciiOpt
   , decWord
   , decWord8
   , decWord16
+  , decWord32
+  , hexWord16
+  , decPositiveInteger
   , endOfInput
+  , isEndOfInput
   , skipUntilAsciiConsume
+  , skipWhile
   , skipAscii
   , skipAscii1
   , skipAlphaAscii
   , skipAlphaAscii1
   , skipDigitsAscii
   , skipDigitsAscii1
+    -- * Lift Effects
+  , effect
     -- * Expose Internals
   , cursor
   , expose
+  , unconsume
     -- * Cut down on boxing
   , unboxWord32
   , boxWord32
+    -- * Bind
+  , bindChar
+    -- * Alternative
+  , orElse
   ) where
 
-import Prelude hiding (length)
+import Prelude hiding (length,any)
 
 import Data.Char (ord)
+import Data.Bits ((.&.),(.|.),unsafeShiftL,xor)
 import Data.Kind (Type)
 import GHC.ST (ST(..),runST)
 import GHC.Exts (Word(W#),Word#,TYPE,State#,Int#,ByteArray#)
 import GHC.Exts (Int(I#),Char(C#),chr#,RuntimeRep)
+import GHC.Exts (Char#,(+#),(-#),(<#),(>#),word2Int#)
+import GHC.Exts (indexCharArray#,indexWord8Array#,ord#,ltWord#)
+import GHC.Exts (timesWord#,plusWord#)
 import GHC.Word (Word16(W16#),Word8(W8#),Word32(W32#))
 import Data.Bytes.Types (Bytes(..))
 import Data.Primitive (ByteArray(..))
@@ -59,8 +86,6 @@ import qualified Data.Primitive as PM
 import qualified Control.Monad
 
 type Bytes# = (# ByteArray#, Int#, Int# #)
-type Maybe# (a :: TYPE r) = (# (# #) | a #)
-type Either# (a :: Type) (b :: TYPE r) = (# a | b #)
 type ST# s (a :: TYPE r) = State# s -> (# State# s, a #)
 type Result# e (a :: TYPE r) =
   (# e
@@ -90,6 +115,12 @@ parseBytes p !b = runST action
       (\s0 -> case f (unboxBytes b) s0 of
         (# s1, r #) -> (# s1, boxResult r #)
       )
+
+parseBytesST :: Parser e s a -> Bytes -> ST s (Result e a)
+parseBytesST (Parser f) !b = ST
+  (\s0 -> case f (unboxBytes b) s0 of
+    (# s1, r #) -> (# s1, boxResult r #)
+  )
 
 instance Functor (Parser e s) where
   {-# inline fmap #-}
@@ -133,6 +164,11 @@ upcastWord16Result (# e | #) = (# e | #)
 upcastWord16Result (# | (# a, b, c #) #) = (# | (# W16# a, b, c #) #)
 
 -- Precondition: the word is small enough
+upcastWord32Result :: Result# e Word# -> Result# e Word32
+upcastWord32Result (# e | #) = (# e | #)
+upcastWord32Result (# | (# a, b, c #) #) = (# | (# W32# a, b, c #) #)
+
+-- Precondition: the word is small enough
 upcastWord8Result :: Result# e Word# -> Result# e Word8
 upcastWord8Result (# e | #) = (# e | #)
 upcastWord8Result (# | (# a, b, c #) #) = (# | (# W8# a, b, c #) #)
@@ -155,13 +191,30 @@ expose :: Parser e s ByteArray
 expose = uneffectful $ \chunk ->
   Success (array chunk) (offset chunk) (length chunk)
 
+-- | Move the cursor back by @n@ characters. Precondition: you
+-- must have previously consumed at least @n@ characters.
+unconsume :: Int -> Parser e s ()
+unconsume n = uneffectful $ \chunk ->
+  Success () (offset chunk - n) (length chunk + n)
+
 uneffectful :: (Bytes -> Result e a) -> Parser e s a
+{-# inline uneffectful #-}
 uneffectful f = Parser
   ( \b s0 -> (# s0, unboxResult (f (boxBytes b)) #) )
 
 uneffectful# :: (Bytes -> Result# e a) -> Parser e s a
 uneffectful# f = Parser
   ( \b s0 -> (# s0, (f (boxBytes b)) #) )
+
+uneffectfulWord# :: (Bytes -> Result# e Word#) -> Parser# e s Word#
+uneffectfulWord# f = Parser#
+  ( \b s0 -> (# s0, (f (boxBytes b)) #) )
+
+effect :: ST s a -> Parser e s a
+effect (ST f) = Parser
+  ( \(# _, off, len #) s0 -> case f s0 of
+    (# s1, a #) -> (# s1, (# | (# a, off, len #) #) #)
+  )
 
 -- | Only valid for characters with a Unicode code point lower
 -- than 128. This consumes a single byte, decoding it as an ASCII
@@ -174,12 +227,67 @@ ascii e !c = uneffectful $ \chunk -> if length chunk > 0
     else Failure e
   else Failure e
 
+ascii3 :: e -> Char -> Char -> Char -> Parser e s ()
+-- GHC should decide to inline this after optimization.
+ascii3 e !c0 !c1 !c2 = uneffectful $ \chunk ->
+  if | length chunk > 2
+     , PM.indexByteArray (array chunk) (offset chunk) == c2w c0
+     , PM.indexByteArray (array chunk) (offset chunk + 1) == c2w c1
+     , PM.indexByteArray (array chunk) (offset chunk + 2) == c2w c2
+         -> Success () (offset chunk + 3) (length chunk - 3)
+     | otherwise -> Failure e
+
+ascii4 :: e -> Char -> Char -> Char -> Char -> Parser e s ()
+-- GHC should decide to inline this after optimization.
+ascii4 e !c0 !c1 !c2 !c3 = uneffectful $ \chunk ->
+  if | length chunk > 3
+     , PM.indexByteArray (array chunk) (offset chunk) == c2w c0
+     , PM.indexByteArray (array chunk) (offset chunk + 1) == c2w c1
+     , PM.indexByteArray (array chunk) (offset chunk + 2) == c2w c2
+     , PM.indexByteArray (array chunk) (offset chunk + 3) == c2w c3
+         -> Success () (offset chunk + 4) (length chunk - 4)
+     | otherwise -> Failure e
+
 failure :: e -> Parser e s a
 failure e = uneffectful $ \_ -> Failure e
 
 -- | Interpret the next byte as an ASCII-encoded character.
 -- Fails if the byte corresponds to a number above 127.
+peekAnyAscii :: e -> Parser e s Char
+peekAnyAscii e = uneffectful $ \chunk -> if length chunk > 0
+  then
+    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
+     in if w < 128
+          then Success
+                 (C# (chr# (unI (fromIntegral w))))
+                 (offset chunk)
+                 (length chunk)
+          else Failure e
+  else Failure e
+
+-- | Interpret the next byte as an ASCII-encoded character.
+-- Fails if no characters are left.
+any :: e -> Parser e s Word8
+{-# inline any #-}
+any e = uneffectful $ \chunk -> if length chunk > 0
+  then
+    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
+     in Success w (offset chunk + 1) (length chunk - 1)
+  else Failure e
+
+-- Interpret the next byte as an ASCII-encoded character.
+-- Does not check to see if any characters are left. This
+-- is not exported.
+anyUnsafe :: Parser e s Word8
+{-# inline anyUnsafe #-}
+anyUnsafe = uneffectful $ \chunk ->
+  let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
+   in Success w (offset chunk + 1) (length chunk - 1)
+
+-- | Interpret the next byte as an ASCII-encoded character.
+-- Fails if the byte corresponds to a number above 127.
 anyAscii :: e -> Parser e s Char
+{-# inline anyAscii #-}
 anyAscii e = uneffectful $ \chunk -> if length chunk > 0
   then
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
@@ -190,6 +298,109 @@ anyAscii e = uneffectful $ \chunk -> if length chunk > 0
                  (length chunk - 1)
           else Failure e
   else Failure e
+
+-- | Interpret the next byte as an ASCII-encoded character.
+-- Fails if the byte corresponds to a number above 127.
+anyAscii# :: e -> Parser# e s Char#
+{-# inline anyAscii# #-}
+anyAscii# e = Parser#
+  (\(# arr, off, len #) s0 -> case len of
+    0# -> (# s0, (# e | #) #)
+    _ ->
+      let !w = indexCharArray# arr off
+       in case ord# w <# 128# of
+            1# -> (# s0, (# | (# w, off +# 1#, len -# 1# #) #) #)
+            _ -> (# s0, (# e | #) #)
+  )
+
+anyUtf8# :: e -> Parser# e s Char#
+{-# noinline anyUtf8# #-}
+anyUtf8# e = Parser#
+  (\(# arr, off, len #) s0 -> case len ># 0# of
+    1# ->
+      let !w0 = indexWord8Array# arr off
+       in if | oneByteChar (W8# w0) -> 
+                 (# s0, (# | (# chr# (word2Int# w0), off +# 1#, len -# 1# #) #) #)
+             | twoByteChar (W8# w0) ->
+                 if | I# len > 1
+                    , w1 <- indexWord8Array# arr (off +# 1#)
+                    , followingByte (W8# w1)
+                    , C# c <- codepointFromTwoBytes (W8# w0) (W8# w1)
+                      -> (# s0, (# | (# c, off +# 2#, len -# 2# #) #) #)
+                    | otherwise -> (# s0, (# e | #) #)
+             | otherwise -> (# s0, (# e | #) #)
+    _ -> (# s0, (# e | #) #)
+  )
+
+-- | Interpret the next byte as an ASCII-encoded character.
+-- Fails if the byte corresponds to a number above 127. Returns
+-- nothing if the end of the input has been reached.
+anyAsciiOpt :: e -> Parser e s (Maybe Char)
+{-# inline anyAsciiOpt #-}
+anyAsciiOpt e = uneffectful $ \chunk -> if length chunk > 0
+  then
+    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
+     in if w < 128
+          then Success
+                 (Just (C# (chr# (unI (fromIntegral w)))))
+                 (offset chunk + 1)
+                 (length chunk - 1)
+          else Failure e
+  else Success Nothing (offset chunk) (length chunk)
+
+-- | Skip while the predicate is matched. This is always inlined.
+skipWhile :: (Word8 -> Bool) -> Parser e s ()
+{-# inline skipWhile #-}
+skipWhile f = go where
+  go = isEndOfInput >>= \case
+    True -> pure ()
+    False -> do
+      w <- anyUnsafe
+      if f w
+        then go
+        else unconsume 1
+
+hexWord16 :: e -> Parser e s Word16
+{-# inline hexWord16 #-}
+hexWord16 e = Parser
+  (\x s0 -> case runParser# (hexWord16# e) x s0 of
+    (# s1, r #) -> case r of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W16# a, b, c #) #) #)
+  )
+
+-- | Parse exactly four ASCII-encoded characters, interpretting
+-- them as the hexadecimal encoding of a 32-bit number. Note that
+-- this rejects a sequence such as @5A9@, requiring @05A9@ instead.
+-- This is insensitive to case.
+hexWord16# :: e -> Parser# e s Word#
+{-# noinline hexWord16# #-}
+hexWord16# e = uneffectfulWord# $ \chunk -> if length chunk >= 4
+  then
+    let w0@(W# n0) = oneHex $ PM.indexByteArray (array chunk) (offset chunk)
+        w1@(W# n1) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 1)
+        w2@(W# n2) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 2)
+        w3@(W# n3) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 3)
+     in if | w0 .|. w1 .|. w2 .|. w3 /= maxBound ->
+             (# |
+                (# (n0 `timesWord#` 4096##) `plusWord#`
+                   (n1 `timesWord#` 256##) `plusWord#`
+                   (n2 `timesWord#` 16##) `plusWord#`
+                   n3
+                ,  unI (offset chunk) +# 4#
+                ,  unI (length chunk) -# 4# #) #)
+           | otherwise -> (# e | #)
+  else (# e | #)
+
+
+-- Returns the maximum machine word if the argument is not
+-- the ASCII encoding of a hexadecimal digit.
+oneHex :: Word8 -> Word
+oneHex w
+  | w >= 48 && w < 58 = (fromIntegral w - 48)
+  | w >= 65 && w < 71 = (fromIntegral w - 55)
+  | w >= 97 && w < 103 = (fromIntegral w - 87)
+  | otherwise = maxBound
 
 -- | Skip ASCII-encoded digits until a non-digit is encountered.
 skipDigitsAscii :: Parser e s ()
@@ -293,6 +504,9 @@ skipLoop1Start e !w !chunk0 = if length chunk0 > 0
     else (# e | #)
   else (# e | #)
 
+-- | Skip bytes until the character from the ASCII plane is encountered.
+-- This does not ensure that the skipped bytes were ASCII-encoded
+-- characters.
 skipUntilAsciiConsume :: e -> Char -> Parser e s ()
 skipUntilAsciiConsume e !w = uneffectful# $ \c ->
   skipUntilConsumeLoop e (c2w w) c
@@ -315,6 +529,13 @@ endOfInput e = uneffectful $ \chunk -> if length chunk == 0
   then Success () (offset chunk) 0
   else Failure e
 
+-- | Returns true if there are no more bytes in the input. Returns
+-- false otherwise. Always succeeds.
+isEndOfInput :: Parser e s Bool
+-- GHC should decide to inline this after optimization.
+isEndOfInput = uneffectful $ \chunk ->
+  Success (length chunk == 0) (offset chunk) (length chunk)
+
 decWord8 :: e -> Parser e s Word8
 decWord8 e = Parser
   (\chunk0 s0 -> case decSmallWordStart e 256 (boxBytes chunk0) s0 of
@@ -327,11 +548,30 @@ decWord16 e = Parser
     (# s1, r #) -> (# s1, upcastWord16Result r #)
   )
 
+-- This must be changed if we start supporting 32-bit platforms.
+decWord32 :: e -> Parser e s Word32
+decWord32 e = Parser
+  (\chunk0 s0 -> case decSmallWordStart e 4294967296 (boxBytes chunk0) s0 of
+    (# s1, r #) -> (# s1, upcastWord32Result r #)
+  )
+
 decWord :: e -> Parser e s Word
 decWord e = Parser
   (\chunk0 s0 -> case decWordStart e (boxBytes chunk0) s0 of
     (# s1, r #) -> (# s1, upcastWordResult r #)
   )
+
+-- | Parse a decimal-encoded positive integer of arbitrary
+-- size. Note: this is not implemented efficiently. This
+-- pulls in one digit at a time, multiplying the accumulator
+-- by ten each time and adding the new digit. Since
+-- arithmetic involving arbitrary-precision integers is
+-- somewhat expensive, it would be better to pull in several
+-- digits at a time, convert those to a machine-sized integer,
+-- then upcast and perform the multiplication and addition.
+decPositiveInteger :: e -> Parser e s Integer
+decPositiveInteger e = Parser
+  (\chunk0 s0 -> decPositiveIntegerStart e (boxBytes chunk0) s0)
 
 decWordStart ::
      e -- Error message
@@ -343,6 +583,19 @@ decWordStart e !chunk0 s0 = if length chunk0 > 0
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
      in if w < 10
           then (# s0, decWordMore e w (advance 1 chunk0) #)
+          else (# s0, (# e | #) #)
+  else (# s0, (# e | #) #)
+
+-- No limit on length for integers.
+decPositiveIntegerStart ::
+     e
+  -> Bytes
+  -> ST# s (Result# e Integer)
+decPositiveIntegerStart e !chunk0 s0 = if length chunk0 > 0
+  then
+    let !w = (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
+     in if w < (10 :: Word8)
+          then (# s0, decIntegerMore e (fromIntegral w) (advance 1 chunk0) #)
           else (# s0, (# e | #) #)
   else (# s0, (# e | #) #)
 
@@ -396,6 +649,22 @@ decSmallWordMore e !acc !limit !chunk0 = if length chunk0 > 0
           else (# | (# unW acc, unI (offset chunk0), unI (length chunk0)  #) #)
   else (# | (# unW acc, unI (offset chunk0), 0# #) #)
 
+decIntegerMore ::
+     e -- Error message
+  -> Integer -- Accumulator
+  -> Bytes -- Chunk
+  -> Result# e Integer
+decIntegerMore e !acc !chunk0 = if length chunk0 > 0
+  then
+    let w :: Word8
+        !w = (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
+     in if w < 10
+          then
+            let w' = acc * 10 + fromIntegral w
+             in decIntegerMore e w' (advance 1 chunk0)
+          else (# | (# acc, unI (offset chunk0), unI (length chunk0) #) #)
+  else (# | (# acc, unI (offset chunk0), 0# #) #)
+
 advance :: Int -> Bytes -> Bytes
 advance n (Bytes arr off len) = Bytes arr (off + n) (len - n)
 
@@ -434,3 +703,60 @@ boxWord32 (Parser# f) = Parser
       (# e | #) -> (# s1, (# e | #) #)
       (# | (# a, b, c #) #) -> (# s1, (# | (# W32# a, b, c #) #) #)
   )
+
+bindChar :: Parser# s e Char# -> (Char# -> Parser s e a) -> Parser s e a
+{-# inline bindChar #-}
+bindChar (Parser# f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+orElse :: Parser s e a -> Parser s e a -> Parser s e a
+orElse (Parser f) (Parser g) = Parser
+  (\x s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# _ | #) -> g x s1
+      (# | r #) -> (# s1, (# | r #) #)
+  )
+
+codepointFromThreeBytes :: Word8 -> Word8 -> Word8 -> Char
+codepointFromThreeBytes w1 w2 w3 = C#
+  ( chr#
+    ( unI $ fromIntegral
+      ( unsafeShiftL (word8ToWord w1 .&. 0b00001111) 12 .|. 
+        unsafeShiftL (word8ToWord w2 .&. 0b00111111) 6 .|. 
+        (word8ToWord w3 .&. 0b00111111)
+      )
+    )
+  )
+
+codepointFromTwoBytes :: Word8 -> Word8 -> Char
+codepointFromTwoBytes w1 w2 = C#
+  ( chr#
+    ( unI $ fromIntegral @Word @Int
+      ( unsafeShiftL (word8ToWord w1 .&. 0b00011111) 6 .|. 
+        (word8ToWord w2 .&. 0b00111111)
+      )
+    )
+  )
+
+oneByteChar :: Word8 -> Bool
+oneByteChar !w = w .&. 0b10000000 == 0
+
+twoByteChar :: Word8 -> Bool
+twoByteChar !w = w .&. 0b11100000 == 0b11000000
+
+threeByteChar :: Word8 -> Bool
+threeByteChar !w = w .&. 0b11110000 == 0b11100000
+
+fourByteChar :: Word8 -> Bool
+fourByteChar !w = w .&. 0b11111000 == 0b11110000
+
+word8ToWord :: Word8 -> Word
+word8ToWord = fromIntegral
+
+followingByte :: Word8 -> Bool
+followingByte !w = xor w 0b01000000 .&. 0b11000000 == 0b11000000
