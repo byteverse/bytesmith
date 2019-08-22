@@ -1,8 +1,11 @@
 cabal-version: 2.2
 name: bytesmith
 version: 0.1.0.0
-synopsis: Parsing byte sequences
-description: Parsing bytes as fast as possible
+synopsis: Nonresumable byte parser
+description:
+  Parse bytes as fast as possible. This is a nonresumable parser
+  that aggresively uses `UnboxedSums` to avoid performing any
+  allocations.
 homepage: https://github.com/andrewthad/bytesmith
 bug-reports: https://github.com/andrewthad/bytesmith/issues
 license: BSD-3-Clause
@@ -17,11 +20,11 @@ library
   exposed-modules:
     Data.Bytes.Parser
   build-depends:
-    , base >=4.12.0.0 && <5
+    , base >=4.12 && <5
     , byteslice >=0.1.1 && <2
     , primitive >=0.7 && <0.8
   hs-source-dirs: src
-  ghc-options: -O2 -Wall -ddump-simpl -dsuppress-all -ddump-to-file
+  ghc-options: -O2 -Wall
   default-language: Haskell2010
 
 test-suite test

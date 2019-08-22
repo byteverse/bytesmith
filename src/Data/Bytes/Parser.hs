@@ -19,14 +19,13 @@
 module Data.Bytes.Parser
   ( -- * Types
     Parser(..)
-  , Parser#(..)
   , Result(..)
     -- * Run Parsers
   , parseByteArray
   , parseBytes
   , parseBytesST
     -- * Build Parsers
-  , failure
+  , fail
   , peekAnyAscii
   , ascii
   , ascii3
@@ -61,13 +60,14 @@ module Data.Bytes.Parser
     -- * Cut down on boxing
   , unboxWord32
   , boxWord32
-    -- * Bind
+    -- * Specialized Bind
+    -- $bind
   , bindChar
     -- * Alternative
   , orElse
   ) where
 
-import Prelude hiding (length,any)
+import Prelude hiding (length,any,fail)
 
 import Data.Char (ord)
 import Data.Bits ((.&.),(.|.),unsafeShiftL,xor)
@@ -76,7 +76,7 @@ import GHC.ST (ST(..),runST)
 import GHC.Exts (Word(W#),Word#,TYPE,State#,Int#,ByteArray#)
 import GHC.Exts (Int(I#),Char(C#),chr#,RuntimeRep)
 import GHC.Exts (Char#,(+#),(-#),(<#),(>#),word2Int#)
-import GHC.Exts (indexCharArray#,indexWord8Array#,ord#,ltWord#)
+import GHC.Exts (indexCharArray#,indexWord8Array#,ord#)
 import GHC.Exts (timesWord#,plusWord#)
 import GHC.Word (Word16(W16#),Word8(W8#),Word32(W32#))
 import Data.Bytes.Types (Bytes(..))
@@ -91,21 +91,21 @@ type Result# e (a :: TYPE r) =
   (# e
   | (# a, Int#, Int# #) #) -- ints are offset and length
 
+-- | A non-resumable parser.
+newtype Parser :: forall (r :: RuntimeRep). Type -> Type -> TYPE r -> Type where
+  Parser :: forall (r :: RuntimeRep) (e :: Type) (s :: Type) (a :: TYPE r).
+    { runParser :: (# ByteArray#, Int#, Int# #) -> ST# s (Result# e a) } -> Parser e s a
+
+-- | The result of running a parser.
 data Result e a
   = Failure e
-  | Success !a !Int !Int -- offset and length
+    -- ^ An error message indicating what went wrong.
+  | Success !a !Int !Int
+    -- ^ The parsed value, the offset after the last consumed byte, and the
+    --   number of bytes remaining in parsed slice.
 
-newtype Parser# :: forall (r :: RuntimeRep). Type -> Type -> TYPE r -> Type where
-  Parser# :: forall (r :: RuntimeRep) (e :: Type) (s :: Type) (a :: TYPE r).
-    { runParser# :: Bytes# -> ST# s (Result# e a) } -> Parser# e s a
-
-newtype Parser :: Type -> Type -> Type -> Type where
-  Parser :: { runParser :: Bytes# -> ST# s (Result# e a) } -> Parser e s a
-
-parseByteArray :: (forall s. Parser e s a) -> ByteArray -> Result e a
-parseByteArray p b =
-  parseBytes p (Bytes b 0 (PM.sizeofByteArray b))
-
+-- | Parse a slice of a byte array. This can succeed even if the
+-- entire slice was not consumed by the parser.
 parseBytes :: forall e a. (forall s. Parser e s a) -> Bytes -> Result e a
 parseBytes p !b = runST action
   where
@@ -116,6 +116,13 @@ parseBytes p !b = runST action
         (# s1, r #) -> (# s1, boxResult r #)
       )
 
+-- | Variant of 'parseBytes' that accepts an unsliced 'ByteArray'.
+parseByteArray :: (forall s. Parser e s a) -> ByteArray -> Result e a
+parseByteArray p b =
+  parseBytes p (Bytes b 0 (PM.sizeofByteArray b))
+
+-- | Variant of 'parseBytes' that allows the parser to be run
+-- as part of an existing effectful context.
 parseBytesST :: Parser e s a -> Bytes -> ST s (Result e a)
 parseBytesST (Parser f) !b = ST
   (\s0 -> case f (unboxBytes b) s0 of
@@ -191,8 +198,8 @@ expose :: Parser e s ByteArray
 expose = uneffectful $ \chunk ->
   Success (array chunk) (offset chunk) (length chunk)
 
--- | Move the cursor back by @n@ characters. Precondition: you
--- must have previously consumed at least @n@ characters.
+-- | Move the cursor back by @n@ bytes. Precondition: you
+-- must have previously consumed at least @n@ bytes.
 unconsume :: Int -> Parser e s ()
 unconsume n = uneffectful $ \chunk ->
   Success () (offset chunk - n) (length chunk + n)
@@ -206,10 +213,11 @@ uneffectful# :: (Bytes -> Result# e a) -> Parser e s a
 uneffectful# f = Parser
   ( \b s0 -> (# s0, (f (boxBytes b)) #) )
 
-uneffectfulWord# :: (Bytes -> Result# e Word#) -> Parser# e s Word#
-uneffectfulWord# f = Parser#
+uneffectfulWord# :: (Bytes -> Result# e Word#) -> Parser e s Word#
+uneffectfulWord# f = Parser
   ( \b s0 -> (# s0, (f (boxBytes b)) #) )
 
+-- | Lift an effectful computation into a parser.
 effect :: ST s a -> Parser e s a
 effect (ST f) = Parser
   ( \(# _, off, len #) s0 -> case f s0 of
@@ -227,6 +235,7 @@ ascii e !c = uneffectful $ \chunk -> if length chunk > 0
     else Failure e
   else Failure e
 
+-- | Parse three bytes in succession.
 ascii3 :: e -> Char -> Char -> Char -> Parser e s ()
 -- GHC should decide to inline this after optimization.
 ascii3 e !c0 !c1 !c2 = uneffectful $ \chunk ->
@@ -237,6 +246,7 @@ ascii3 e !c0 !c1 !c2 = uneffectful $ \chunk ->
          -> Success () (offset chunk + 3) (length chunk - 3)
      | otherwise -> Failure e
 
+-- | Parse four bytes in succession.
 ascii4 :: e -> Char -> Char -> Char -> Char -> Parser e s ()
 -- GHC should decide to inline this after optimization.
 ascii4 e !c0 !c1 !c2 !c3 = uneffectful $ \chunk ->
@@ -248,8 +258,11 @@ ascii4 e !c0 !c1 !c2 !c3 = uneffectful $ \chunk ->
          -> Success () (offset chunk + 4) (length chunk - 4)
      | otherwise -> Failure e
 
-failure :: e -> Parser e s a
-failure e = uneffectful $ \_ -> Failure e
+-- | Fail with the provided error message.
+fail ::
+     e -- ^ Error message
+  -> Parser e s a
+fail e = uneffectful $ \_ -> Failure e
 
 -- | Interpret the next byte as an ASCII-encoded character.
 -- Fails if the byte corresponds to a number above 127.
@@ -265,7 +278,7 @@ peekAnyAscii e = uneffectful $ \chunk -> if length chunk > 0
           else Failure e
   else Failure e
 
--- | Interpret the next byte as an ASCII-encoded character.
+-- | Consumes and returns the next byte in the input.
 -- Fails if no characters are left.
 any :: e -> Parser e s Word8
 {-# inline any #-}
@@ -301,9 +314,9 @@ anyAscii e = uneffectful $ \chunk -> if length chunk > 0
 
 -- | Interpret the next byte as an ASCII-encoded character.
 -- Fails if the byte corresponds to a number above 127.
-anyAscii# :: e -> Parser# e s Char#
+anyAscii# :: e -> Parser e s Char#
 {-# inline anyAscii# #-}
-anyAscii# e = Parser#
+anyAscii# e = Parser
   (\(# arr, off, len #) s0 -> case len of
     0# -> (# s0, (# e | #) #)
     _ ->
@@ -313,9 +326,11 @@ anyAscii# e = Parser#
             _ -> (# s0, (# e | #) #)
   )
 
-anyUtf8# :: e -> Parser# e s Char#
+-- | Interpret the next one to four bytes as a UTF-8-encoded character.
+-- Fails if the decoded codepoint is in the range U+D800 through U+DFFF.
+anyUtf8# :: e -> Parser e s Char#
 {-# noinline anyUtf8# #-}
-anyUtf8# e = Parser#
+anyUtf8# e = Parser
   (\(# arr, off, len #) s0 -> case len ># 0# of
     1# ->
       let !w0 = indexWord8Array# arr off
@@ -327,6 +342,24 @@ anyUtf8# e = Parser#
                     , followingByte (W8# w1)
                     , C# c <- codepointFromTwoBytes (W8# w0) (W8# w1)
                       -> (# s0, (# | (# c, off +# 2#, len -# 2# #) #) #)
+                    | otherwise -> (# s0, (# e | #) #)
+             | threeByteChar (W8# w0) ->
+                 if | I# len > 2
+                    , w1 <- indexWord8Array# arr (off +# 1# )
+                    , w2 <- indexWord8Array# arr (off +# 2# )
+                    , followingByte (W8# w1)
+                    , !c@(C# c#) <- codepointFromThreeBytes (W8# w0) (W8# w1) (W8# w2)
+                    , c < '\xD800' || c > '\xDFFF'
+                      -> (# s0, (# | (# c#, off +# 3#, len -# 3# #) #) #)
+                    | otherwise -> (# s0, (# e | #) #)
+             | fourByteChar (W8# w0) ->
+                 if | I# len > 3
+                    , w1 <- indexWord8Array# arr (off +# 1# )
+                    , w2 <- indexWord8Array# arr (off +# 2# )
+                    , w3 <- indexWord8Array# arr (off +# 3# )
+                    , followingByte (W8# w1)
+                    , !(C# c#) <- codepointFromFourBytes (W8# w0) (W8# w1) (W8# w2) (W8# w3)
+                      -> (# s0, (# | (# c#, off +# 4#, len -# 4# #) #) #)
                     | otherwise -> (# s0, (# e | #) #)
              | otherwise -> (# s0, (# e | #) #)
     _ -> (# s0, (# e | #) #)
@@ -360,27 +393,27 @@ skipWhile f = go where
         then go
         else unconsume 1
 
-hexWord16 :: e -> Parser e s Word16
-{-# inline hexWord16 #-}
-hexWord16 e = Parser
-  (\x s0 -> case runParser# (hexWord16# e) x s0 of
-    (# s1, r #) -> case r of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# a, b, c #) #) -> (# s1, (# | (# W16# a, b, c #) #) #)
-  )
-
 -- | Parse exactly four ASCII-encoded characters, interpretting
 -- them as the hexadecimal encoding of a 32-bit number. Note that
 -- this rejects a sequence such as @5A9@, requiring @05A9@ instead.
 -- This is insensitive to case.
-hexWord16# :: e -> Parser# e s Word#
+hexWord16 :: e -> Parser e s Word16
+{-# inline hexWord16 #-}
+hexWord16 e = Parser
+  (\x s0 -> case runParser (hexWord16# e) x s0 of
+    (# s1, r #) -> case r of
+      (# err | #) -> (# s1, (# err | #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W16# a, b, c #) #) #)
+  )
+
+hexWord16# :: e -> Parser e s Word#
 {-# noinline hexWord16# #-}
 hexWord16# e = uneffectfulWord# $ \chunk -> if length chunk >= 4
   then
-    let w0@(W# n0) = oneHex $ PM.indexByteArray (array chunk) (offset chunk)
-        w1@(W# n1) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 1)
-        w2@(W# n2) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 2)
-        w3@(W# n3) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 3)
+    let !w0@(W# n0) = oneHex $ PM.indexByteArray (array chunk) (offset chunk)
+        !w1@(W# n1) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 1)
+        !w2@(W# n2) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 2)
+        !w3@(W# n3) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 3)
      in if | w0 .|. w1 .|. w2 .|. w3 /= maxBound ->
              (# |
                 (# (n0 `timesWord#` 4096##) `plusWord#`
@@ -536,25 +569,34 @@ isEndOfInput :: Parser e s Bool
 isEndOfInput = uneffectful $ \chunk ->
   Success (length chunk == 0) (offset chunk) (length chunk)
 
+-- | Parse a decimal-encoded 8-bit word. If the number is larger
+-- than 255, this parser fails.
 decWord8 :: e -> Parser e s Word8
 decWord8 e = Parser
   (\chunk0 s0 -> case decSmallWordStart e 256 (boxBytes chunk0) s0 of
     (# s1, r #) -> (# s1, upcastWord8Result r #)
   )
 
+-- | Parse a decimal-encoded 16-bit word. If the number is larger
+-- than 65535, this parser fails.
 decWord16 :: e -> Parser e s Word16
 decWord16 e = Parser
   (\chunk0 s0 -> case decSmallWordStart e 65536 (boxBytes chunk0) s0 of
     (# s1, r #) -> (# s1, upcastWord16Result r #)
   )
 
--- This must be changed if we start supporting 32-bit platforms.
+-- | Parse a decimal-encoded 32-bit word. If the number is larger
+-- than 4294967295, this parser fails.
 decWord32 :: e -> Parser e s Word32
+-- This will not work on 32-bit platforms.
 decWord32 e = Parser
   (\chunk0 s0 -> case decSmallWordStart e 4294967296 (boxBytes chunk0) s0 of
     (# s1, r #) -> (# s1, upcastWord32Result r #)
   )
 
+-- | Parse a decimal-encoded number. If the number is too large to be
+-- represented by a machine word, this overflows rather than failing.
+-- This may be changed in a future release.
 decWord :: e -> Parser e s Word
 decWord e = Parser
   (\chunk0 s0 -> case decWordStart e (boxBytes chunk0) s0 of
@@ -688,38 +730,49 @@ boxResult :: Result# e a -> Result e a
 boxResult (# | (# a, b, c #) #) = Success a (I# b) (I# c)
 boxResult (# e | #) = Failure e
 
-unboxWord32 :: Parser s e Word32 -> Parser# s e Word#
-unboxWord32 (Parser f) = Parser#
+-- | Convert a 'Word32' parser to a 'Word#' parser.
+unboxWord32 :: Parser s e Word32 -> Parser s e Word#
+unboxWord32 (Parser f) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r #) -> case r of
       (# e | #) -> (# s1, (# e | #) #)
       (# | (# W32# a, b, c #) #) -> (# s1, (# | (# a, b, c #) #) #)
   )
 
-boxWord32 :: Parser# s e Word# -> Parser s e Word32
-boxWord32 (Parser# f) = Parser
+-- | Convert a 'Word#' parser to a 'Word32' parser. Precondition:
+-- the argument parser only returns words less than 4294967296.
+boxWord32 :: Parser s e Word# -> Parser s e Word32
+boxWord32 (Parser f) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r #) -> case r of
       (# e | #) -> (# s1, (# e | #) #)
       (# | (# a, b, c #) #) -> (# s1, (# | (# W32# a, b, c #) #) #)
   )
 
-bindChar :: Parser# s e Char# -> (Char# -> Parser s e a) -> Parser s e a
-{-# inline bindChar #-}
-bindChar (Parser# f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
-
+-- | There is a law-abiding instance of @Alternative@ for 'Parser'.
+-- However, it is not terribly useful since error messages seldom
+-- have a 'Monoid' instance. This function is a right-biased
+-- variant of @\<|\>@. Consequently, it lacks an identity.
+-- See <https://github.com/bos/attoparsec/issues/122 attoparsec #122>
+-- for more discussion of this topic.
 orElse :: Parser s e a -> Parser s e a -> Parser s e a
 orElse (Parser f) (Parser g) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# _ | #) -> g x s1
       (# | r #) -> (# s1, (# | r #) #)
+  )
+
+codepointFromFourBytes :: Word8 -> Word8 -> Word8 -> Word8 -> Char
+codepointFromFourBytes w1 w2 w3 w4 = C#
+  ( chr#
+    ( unI $ fromIntegral
+      ( unsafeShiftL (word8ToWord w1 .&. 0b00001111) 18 .|. 
+        unsafeShiftL (word8ToWord w2 .&. 0b00111111) 12 .|. 
+        unsafeShiftL (word8ToWord w3 .&. 0b00111111) 6 .|. 
+        (word8ToWord w4 .&. 0b00111111)
+      )
+    )
   )
 
 codepointFromThreeBytes :: Word8 -> Word8 -> Word8 -> Char
@@ -760,3 +813,22 @@ word8ToWord = fromIntegral
 
 followingByte :: Word8 -> Bool
 followingByte !w = xor w 0b01000000 .&. 0b11000000 == 0b11000000
+
+{- $bind
+Sometimes, GHC ends up building join points in a way that
+boxes arguments unnecessarily. In this situation, special variants
+of monadic @>>=@ can be helpful. If @C#@, @I#@, etc. never
+get used in you original source code, GHC cannot introduce them.
+-}
+
+-- | Specialization of monadic bind for parsers that return 'Char#'.
+bindChar :: Parser s e Char# -> (Char# -> Parser s e a) -> Parser s e a
+{-# inline bindChar #-}
+bindChar (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
