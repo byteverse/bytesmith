@@ -44,6 +44,7 @@ module Data.Bytes.Parser
   , endOfInput
   , isEndOfInput
   , skipUntilAsciiConsume
+  , takeWhile
   , skipWhile
   , skipAscii
   , skipAscii1
@@ -67,7 +68,7 @@ module Data.Bytes.Parser
   , orElse
   ) where
 
-import Prelude hiding (length,any,fail)
+import Prelude hiding (length,any,fail,takeWhile)
 
 import Data.Char (ord)
 import Data.Bits ((.&.),(.|.),unsafeShiftL,xor)
@@ -80,6 +81,7 @@ import GHC.Exts (indexCharArray#,indexWord8Array#,ord#)
 import GHC.Exts (timesWord#,plusWord#)
 import GHC.Word (Word16(W16#),Word8(W8#),Word32(W32#))
 import Data.Bytes.Types (Bytes(..))
+import qualified Data.Bytes as B
 import Data.Primitive (ByteArray(..))
 
 import qualified Data.Primitive as PM
@@ -380,6 +382,12 @@ anyAsciiOpt e = uneffectful $ \chunk -> if length chunk > 0
                  (length chunk - 1)
           else Failure e
   else Success Nothing (offset chunk) (length chunk)
+
+-- | Take while the predicate is matched. This is always inlined.
+takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
+{-# inline takeWhile #-}
+takeWhile f = uneffectful $ \chunk -> case B.takeWhile f chunk of
+  bytes -> Success bytes (offset chunk + length bytes) (length chunk - length bytes)
 
 -- | Skip while the predicate is matched. This is always inlined.
 skipWhile :: (Word8 -> Bool) -> Parser e s ()
@@ -755,6 +763,7 @@ boxWord32 (Parser f) = Parser
 -- variant of @\<|\>@. Consequently, it lacks an identity.
 -- See <https://github.com/bos/attoparsec/issues/122 attoparsec #122>
 -- for more discussion of this topic.
+infixl 3 `orElse`
 orElse :: Parser s e a -> Parser s e a -> Parser s e a
 orElse (Parser f) (Parser g) = Parser
   (\x s0 -> case f x s0 of
