@@ -70,6 +70,7 @@ module Data.Bytes.Parser
 
 import Prelude hiding (length,any,fail,takeWhile)
 
+import Control.Applicative (Alternative)
 import Data.Char (ord)
 import Data.Bits ((.&.),(.|.),unsafeShiftL,xor)
 import Data.Kind (Type)
@@ -84,6 +85,7 @@ import Data.Bytes.Types (Bytes(..))
 import qualified Data.Bytes as B
 import Data.Primitive (ByteArray(..))
 
+import qualified Control.Applicative
 import qualified Data.Primitive as PM
 import qualified Control.Monad
 
@@ -154,6 +156,22 @@ instance Monad (Parser e s) where
         (# e | #) -> (# s1, (# e | #) #)
         (# | (# y, b, c #) #) ->
           runParser (g y) (# arr, b, c #) s1
+    )
+
+-- | Combines the error messages using '<>' when both
+-- parsers fail.
+instance Monoid e => Alternative (Parser e s) where
+  {-# inline empty #-}
+  {-# inline (<|>) #-}
+  empty = fail mempty
+  Parser f <|> Parser g = Parser
+    (\x s0 -> case f x s0 of
+      (# s1, r0 #) -> case r0 of
+        (# eRight | #) -> case g x s1 of
+          (# s2, r1 #) -> case r1 of
+            (# eLeft | #) -> (# s2, (# eRight <> eLeft | #) #)
+            (# | r #) -> (# s2, (# | r #) #)
+        (# | r #) -> (# s1, (# | r #) #)
     )
 
 pureParser :: a -> Parser e s a
@@ -757,14 +775,16 @@ boxWord32 (Parser f) = Parser
       (# | (# a, b, c #) #) -> (# s1, (# | (# W32# a, b, c #) #) #)
   )
 
--- | There is a law-abiding instance of @Alternative@ for 'Parser'.
+-- | There is a law-abiding instance of 'Alternative' for 'Parser'.
 -- However, it is not terribly useful since error messages seldom
--- have a 'Monoid' instance. This function is a right-biased
--- variant of @\<|\>@. Consequently, it lacks an identity.
--- See <https://github.com/bos/attoparsec/issues/122 attoparsec #122>
+-- have a 'Monoid' instance. This function is a variant of @\<|\>@
+-- that is right-biased in its treatment of error messages.
+-- Consequently, @orElse@ lacks an identity.
+-- See <https://github.com/bos/attoparsec/issues/122 attoparsec issue #122>
 -- for more discussion of this topic.
 infixl 3 `orElse`
 orElse :: Parser s e a -> Parser s e a -> Parser s e a
+{-# inline orElse #-}
 orElse (Parser f) (Parser g) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
