@@ -39,6 +39,11 @@ module Data.Bytes.Parser
   , decWord8
   , decWord16
   , decWord32
+  , decUnsignedInt
+  , decUnsignedInt#
+  , decSignedInt
+  , decStandardInt
+  , decTrailingInt
   , hexWord16
   , decPositiveInteger
   , endOfInput
@@ -55,15 +60,27 @@ module Data.Bytes.Parser
     -- * Lift Effects
   , effect
     -- * Expose Internals
+    -- | Everything in this section is unsafe and can lead to
+    -- nondeterministic output or segfaults if used incorrectly.
   , cursor
   , expose
   , unconsume
+  , jump
     -- * Cut down on boxing
   , unboxWord32
   , boxWord32
+  , unboxIntPair
+  , boxIntPair
     -- * Specialized Bind
     -- $bind
   , bindChar
+  , bindToIntPair
+  , bindIntToIntPair
+  , bindCharToIntPair
+    -- * Specialized Pure
+  , pureIntPair
+    -- * Specialized Fail
+  , failIntPair
     -- * Alternative
   , orElse
   ) where
@@ -104,9 +121,18 @@ newtype Parser :: forall (r :: RuntimeRep). Type -> Type -> TYPE r -> Type where
 data Result e a
   = Failure e
     -- ^ An error message indicating what went wrong.
-  | Success !a !Int !Int
-    -- ^ The parsed value, the offset after the last consumed byte, and the
-    --   number of bytes remaining in parsed slice.
+  | Success !a !Int
+    -- ^ The parsed value and the number of bytes
+    -- remaining in parsed slice.
+  deriving (Eq,Show)
+
+-- The result of running a parser. Used internally.
+data InternalResult e a
+  = InternalFailure e
+    -- An error message indicating what went wrong.
+  | InternalSuccess !a !Int !Int
+    -- The parsed value, the offset after the last consumed byte, and the
+    -- number of bytes remaining in parsed slice.
 
 -- | Parse a slice of a byte array. This can succeed even if the
 -- entire slice was not consumed by the parser.
@@ -117,7 +143,7 @@ parseBytes p !b = runST action
   action = case p @s of
     Parser f -> ST
       (\s0 -> case f (unboxBytes b) s0 of
-        (# s1, r #) -> (# s1, boxResult r #)
+        (# s1, r #) -> (# s1, boxPublicResult r #)
       )
 
 -- | Variant of 'parseBytes' that accepts an unsliced 'ByteArray'.
@@ -130,7 +156,7 @@ parseByteArray p b =
 parseBytesST :: Parser e s a -> Bytes -> ST s (Result e a)
 parseBytesST (Parser f) !b = ST
   (\s0 -> case f (unboxBytes b) s0 of
-    (# s1, r #) -> (# s1, boxResult r #)
+    (# s1, r #) -> (# s1, boxPublicResult r #)
   )
 
 instance Functor (Parser e s) where
@@ -185,6 +211,10 @@ upcastWordResult :: Result# e Word# -> Result# e Word
 upcastWordResult (# e | #) = (# e | #)
 upcastWordResult (# | (# a, b, c #) #) = (# | (# W# a, b, c #) #)
 
+upcastIntResult :: Result# e Int# -> Result# e Int
+upcastIntResult (# e | #) = (# e | #)
+upcastIntResult (# | (# a, b, c #) #) = (# | (# I# a, b, c #) #)
+
 -- Precondition: the word is small enough
 upcastWord16Result :: Result# e Word# -> Result# e Word16
 upcastWord16Result (# e | #) = (# e | #)
@@ -208,7 +238,7 @@ c2w = fromIntegral . ord
 -- that refer to equivalent slices. Be careful.
 cursor :: Parser e s Int
 cursor = uneffectful $ \chunk ->
-  Success (offset chunk) (offset chunk) (length chunk)
+  InternalSuccess (offset chunk) (offset chunk) (length chunk)
 
 -- | Return the byte array being parsed. This includes bytes
 -- that preceed the current offset and may include bytes that
@@ -216,15 +246,22 @@ cursor = uneffectful $ \chunk ->
 -- use this is you know what you're doing.
 expose :: Parser e s ByteArray
 expose = uneffectful $ \chunk ->
-  Success (array chunk) (offset chunk) (length chunk)
+  InternalSuccess (array chunk) (offset chunk) (length chunk)
 
 -- | Move the cursor back by @n@ bytes. Precondition: you
 -- must have previously consumed at least @n@ bytes.
 unconsume :: Int -> Parser e s ()
 unconsume n = uneffectful $ \chunk ->
-  Success () (offset chunk - n) (length chunk + n)
+  InternalSuccess () (offset chunk - n) (length chunk + n)
 
-uneffectful :: (Bytes -> Result e a) -> Parser e s a
+-- | Set the position to the given index. Precondition: the index
+-- must be valid. It should be the result of an earlier call to
+-- 'cursor'.
+jump :: Int -> Parser e s ()
+jump ix = uneffectful $ \chunk ->
+  InternalSuccess () ix (length chunk + (offset chunk - ix))
+
+uneffectful :: (Bytes -> InternalResult e a) -> Parser e s a
 {-# inline uneffectful #-}
 uneffectful f = Parser
   ( \b s0 -> (# s0, unboxResult (f (boxBytes b)) #) )
@@ -251,9 +288,9 @@ ascii :: e -> Char -> Parser e s ()
 -- GHC should decide to inline this after optimization.
 ascii e !c = uneffectful $ \chunk -> if length chunk > 0
   then if PM.indexByteArray (array chunk) (offset chunk) == c2w c
-    then Success () (offset chunk + 1) (length chunk - 1)
-    else Failure e
-  else Failure e
+    then InternalSuccess () (offset chunk + 1) (length chunk - 1)
+    else InternalFailure e
+  else InternalFailure e
 
 -- | Parse three bytes in succession.
 ascii3 :: e -> Char -> Char -> Char -> Parser e s ()
@@ -263,8 +300,8 @@ ascii3 e !c0 !c1 !c2 = uneffectful $ \chunk ->
      , PM.indexByteArray (array chunk) (offset chunk) == c2w c0
      , PM.indexByteArray (array chunk) (offset chunk + 1) == c2w c1
      , PM.indexByteArray (array chunk) (offset chunk + 2) == c2w c2
-         -> Success () (offset chunk + 3) (length chunk - 3)
-     | otherwise -> Failure e
+         -> InternalSuccess () (offset chunk + 3) (length chunk - 3)
+     | otherwise -> InternalFailure e
 
 -- | Parse four bytes in succession.
 ascii4 :: e -> Char -> Char -> Char -> Char -> Parser e s ()
@@ -275,14 +312,14 @@ ascii4 e !c0 !c1 !c2 !c3 = uneffectful $ \chunk ->
      , PM.indexByteArray (array chunk) (offset chunk + 1) == c2w c1
      , PM.indexByteArray (array chunk) (offset chunk + 2) == c2w c2
      , PM.indexByteArray (array chunk) (offset chunk + 3) == c2w c3
-         -> Success () (offset chunk + 4) (length chunk - 4)
-     | otherwise -> Failure e
+         -> InternalSuccess () (offset chunk + 4) (length chunk - 4)
+     | otherwise -> InternalFailure e
 
 -- | Fail with the provided error message.
 fail ::
      e -- ^ Error message
   -> Parser e s a
-fail e = uneffectful $ \_ -> Failure e
+fail e = uneffectful $ \_ -> InternalFailure e
 
 -- | Interpret the next byte as an ASCII-encoded character.
 -- Fails if the byte corresponds to a number above 127.
@@ -291,12 +328,12 @@ peekAnyAscii e = uneffectful $ \chunk -> if length chunk > 0
   then
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
      in if w < 128
-          then Success
+          then InternalSuccess
                  (C# (chr# (unI (fromIntegral w))))
                  (offset chunk)
                  (length chunk)
-          else Failure e
-  else Failure e
+          else InternalFailure e
+  else InternalFailure e
 
 -- | Consumes and returns the next byte in the input.
 -- Fails if no characters are left.
@@ -305,8 +342,8 @@ any :: e -> Parser e s Word8
 any e = uneffectful $ \chunk -> if length chunk > 0
   then
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
-     in Success w (offset chunk + 1) (length chunk - 1)
-  else Failure e
+     in InternalSuccess w (offset chunk + 1) (length chunk - 1)
+  else InternalFailure e
 
 -- Interpret the next byte as an ASCII-encoded character.
 -- Does not check to see if any characters are left. This
@@ -315,7 +352,7 @@ anyUnsafe :: Parser e s Word8
 {-# inline anyUnsafe #-}
 anyUnsafe = uneffectful $ \chunk ->
   let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
-   in Success w (offset chunk + 1) (length chunk - 1)
+   in InternalSuccess w (offset chunk + 1) (length chunk - 1)
 
 -- | Interpret the next byte as an ASCII-encoded character.
 -- Fails if the byte corresponds to a number above 127.
@@ -325,12 +362,12 @@ anyAscii e = uneffectful $ \chunk -> if length chunk > 0
   then
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
      in if w < 128
-          then Success
+          then InternalSuccess
                  (C# (chr# (unI (fromIntegral w))))
                  (offset chunk + 1)
                  (length chunk - 1)
-          else Failure e
-  else Failure e
+          else InternalFailure e
+  else InternalFailure e
 
 -- | Interpret the next byte as an ASCII-encoded character.
 -- Fails if the byte corresponds to a number above 127.
@@ -394,18 +431,18 @@ anyAsciiOpt e = uneffectful $ \chunk -> if length chunk > 0
   then
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
      in if w < 128
-          then Success
+          then InternalSuccess
                  (Just (C# (chr# (unI (fromIntegral w)))))
                  (offset chunk + 1)
                  (length chunk - 1)
-          else Failure e
-  else Success Nothing (offset chunk) (length chunk)
+          else InternalFailure e
+  else InternalSuccess Nothing (offset chunk) (length chunk)
 
 -- | Take while the predicate is matched. This is always inlined.
 takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
 {-# inline takeWhile #-}
 takeWhile f = uneffectful $ \chunk -> case B.takeWhile f chunk of
-  bytes -> Success bytes (offset chunk + length bytes) (length chunk - length bytes)
+  bytes -> InternalSuccess bytes (offset chunk + length bytes) (length chunk - length bytes)
 
 -- | Skip while the predicate is matched. This is always inlined.
 skipWhile :: (Word8 -> Bool) -> Parser e s ()
@@ -585,15 +622,15 @@ skipUntilConsumeLoop e !w !c = if length c > 0
 endOfInput :: e -> Parser e s ()
 -- GHC should decide to inline this after optimization.
 endOfInput e = uneffectful $ \chunk -> if length chunk == 0
-  then Success () (offset chunk) 0
-  else Failure e
+  then InternalSuccess () (offset chunk) 0
+  else InternalFailure e
 
 -- | Returns true if there are no more bytes in the input. Returns
 -- false otherwise. Always succeeds.
 isEndOfInput :: Parser e s Bool
 -- GHC should decide to inline this after optimization.
 isEndOfInput = uneffectful $ \chunk ->
-  Success (length chunk == 0) (offset chunk) (length chunk)
+  InternalSuccess (length chunk == 0) (offset chunk) (length chunk)
 
 -- | Parse a decimal-encoded 8-bit word. If the number is larger
 -- than 255, this parser fails.
@@ -621,13 +658,108 @@ decWord32 e = Parser
   )
 
 -- | Parse a decimal-encoded number. If the number is too large to be
--- represented by a machine word, this overflows rather than failing.
--- This may be changed in a future release.
+-- represented by a machine word, this fails with the provided
+-- error message. This accepts any number of leading zeroes.
 decWord :: e -> Parser e s Word
 decWord e = Parser
   (\chunk0 s0 -> case decWordStart e (boxBytes chunk0) s0 of
     (# s1, r #) -> (# s1, upcastWordResult r #)
   )
+
+-- | Parse a decimal-encoded number. If the number is too large to be
+-- represented by a machine integer, this fails with the provided
+-- error message. This rejects input with that is preceeded by plus
+-- or minus. Consequently, it does not parse negative numbers. Use
+-- 'decStandardInt' or 'decSignedInt' for that purpose. On a 64-bit
+-- platform 'decWord' will successfully parse 9223372036854775808
+-- (i.e. @2 ^ 63@), but 'decUnsignedInt' will fail. This allows
+-- leading zeroes.
+decUnsignedInt :: e -> Parser e s Int
+decUnsignedInt e = Parser
+  (\chunk0 s0 -> case decPosIntStart e (boxBytes chunk0) s0 of
+    (# s1, r #) -> (# s1, upcastIntResult r #)
+  )
+
+-- | Variant of 'decUnsignedInt' with an unboxed result.
+decUnsignedInt# :: e -> Parser e s Int#
+decUnsignedInt# e = Parser
+  (\chunk0 s0 -> decPosIntStart e (boxBytes chunk0) s0)
+
+-- | Parse a decimal-encoded number. If the number is too large to be
+-- represented by a machine integer, this fails with the provided
+-- error message. This allows the number to optionally be prefixed
+-- by plus or minus. If the sign prefix is not present, the number
+-- is interpreted as positive. This allows leading zeroes.
+decSignedInt :: e -> Parser e s Int
+decSignedInt e = Parser
+  (\chunk0 s0 -> case runParser (decSignedInt# e) chunk0 s0 of
+    (# s1, r #) -> (# s1, upcastIntResult r #)
+  )
+
+-- | Variant of 'decUnsignedInt' that lets the caller supply a leading
+-- digit. This is useful when parsing a language where integers with
+-- leading zeroes are considered invalid. The caller must consume the
+-- plus or minus sign (if either of those are allowed) and the first
+-- digit before calling this parser.
+decTrailingInt ::
+     e -- ^ Error message
+  -> Int -- ^ Leading digit, should be between @-9@ and @9@.
+  -> Parser e s Int
+decTrailingInt e !w = Parser
+  (\chunk0 s0 -> case runParser (decTrailingInt# e w) chunk0 s0 of
+    (# s1, r #) -> (# s1, upcastIntResult r #)
+  )
+
+decTrailingInt# ::
+     e -- Error message
+  -> Int -- Leading digit, should be between @-9@ and @9@.
+  -> Parser e s Int#
+decTrailingInt# e !w = if w >= 0
+  then Parser (\chunk0 s0 -> (# s0, decPosIntMore e w (boxBytes chunk0) #))
+  else Parser (\chunk0 s0 -> (# s0, decNegIntMore e w (boxBytes chunk0) #))
+
+-- | Parse a decimal-encoded number. If the number is too large to be
+-- represented by a machine integer, this fails with the provided
+-- error message. This allows the number to optionally be prefixed
+-- by minus. If the minus prefix is not present, the number
+-- is interpreted as positive. The disallows a leading plus sign.
+-- For example, 'decStandardInt' rejects @+42@, but 'decSignedInt'
+-- allows it.
+decStandardInt :: e -> Parser e s Int
+decStandardInt e = Parser
+  (\chunk0 s0 -> case runParser (decStandardInt# e) chunk0 s0 of
+    (# s1, r #) -> (# s1, upcastIntResult r #)
+  )
+
+decSignedInt# :: e -> Parser e s Int#
+{-# noinline decSignedInt# #-}
+decSignedInt# e = any e `bindToIntHash` \c -> case c of
+  43 -> Parser -- plus sign
+    (\chunk0 s0 -> decPosIntStart e (boxBytes chunk0) s0)
+  45 -> Parser -- minus sign
+    (\chunk0 s0 -> decNegIntStart e (boxBytes chunk0) s0)
+  _ -> Parser -- no sign, there should be a digit here 
+    (\chunk0 s0 ->
+      let !w = fromIntegral @Word8 @Word c - 48
+        in if w < 10
+             then (# s0, decPosIntMore e (fromIntegral @Word @Int w) (boxBytes chunk0) #)
+             else (# s0, (# e | #) #)
+    )
+
+-- This is the same as decSignedInt except that we disallow
+-- a leading plus sign.
+decStandardInt# :: e -> Parser e s Int#
+{-# noinline decStandardInt# #-}
+decStandardInt# e = any e `bindToIntHash` \c -> case c of
+  45 -> Parser -- minus sign
+    (\chunk0 s0 -> decNegIntStart e (boxBytes chunk0) s0)
+  _ -> Parser -- no sign, there should be a digit here 
+    (\chunk0 s0 ->
+      let !w = fromIntegral @Word8 @Word c - 48
+        in if w < 10
+             then (# s0, decPosIntMore e (fromIntegral @Word @Int w) (boxBytes chunk0) #)
+             else (# s0, (# e | #) #)
+    )
 
 -- | Parse a decimal-encoded positive integer of arbitrary
 -- size. Note: this is not implemented efficiently. This
@@ -651,6 +783,32 @@ decWordStart e !chunk0 s0 = if length chunk0 > 0
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
      in if w < 10
           then (# s0, decWordMore e w (advance 1 chunk0) #)
+          else (# s0, (# e | #) #)
+  else (# s0, (# e | #) #)
+
+decPosIntStart ::
+     e -- Error message
+  -> Bytes -- Chunk
+  -> ST# s (Result# e Int# )
+decPosIntStart e !chunk0 s0 = if length chunk0 > 0
+  then
+    let !w = fromIntegral @Word8 @Word
+          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
+     in if w < 10
+          then (# s0, decPosIntMore e (fromIntegral @Word @Int w) (advance 1 chunk0) #)
+          else (# s0, (# e | #) #)
+  else (# s0, (# e | #) #)
+
+decNegIntStart ::
+     e -- Error message
+  -> Bytes -- Chunk
+  -> ST# s (Result# e Int# )
+decNegIntStart e !chunk0 s0 = if length chunk0 > 0
+  then
+    let !w = fromIntegral @Word8 @Word
+          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
+     in if w < 10
+          then (# s0, decNegIntMore e (negate (fromIntegral @Word @Int w)) (advance 1 chunk0) #)
           else (# s0, (# e | #) #)
   else (# s0, (# e | #) #)
 
@@ -692,11 +850,45 @@ decWordMore e !acc !chunk0 = if length chunk0 > 0
   then
     let !w = fromIntegral @Word8 @Word
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-     in if w < 10
-          then decWordMore e (acc * 10 + w)
-                 (advance 1 chunk0)
+        !acc' = acc * 10 + w
+     in if w < 10 && acc' >= acc
+          then decWordMore e acc' (advance 1 chunk0)
           else (# | (# unW acc, unI (offset chunk0), unI (length chunk0)  #) #)
   else (# | (# unW acc, unI (offset chunk0), 0# #) #)
+
+-- This will not inline since it is recursive, but worker
+-- wrapper will still happen.
+decNegIntMore ::
+     e -- Error message
+  -> Int -- Accumulator
+  -> Bytes -- Chunk
+  -> Result# e Int#
+decNegIntMore e !acc !chunk0 = if length chunk0 > 0
+  then
+    let !w = fromIntegral @Word8 @Word
+          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
+        !acc' = acc * 10 - (fromIntegral @Word @Int w)
+     in if w < 10 && acc' <= acc
+          then decNegIntMore e acc' (advance 1 chunk0)
+          else (# | (# unI acc, unI (offset chunk0), unI (length chunk0)  #) #)
+  else (# | (# unI acc, unI (offset chunk0), 0# #) #)
+
+-- This will not inline since it is recursive, but worker
+-- wrapper will still happen.
+decPosIntMore ::
+     e -- Error message
+  -> Int -- Accumulator
+  -> Bytes -- Chunk
+  -> Result# e Int#
+decPosIntMore e !acc !chunk0 = if length chunk0 > 0
+  then
+    let !w = fromIntegral @Word8 @Word
+          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
+        !acc' = acc * 10 + (fromIntegral @Word @Int w)
+     in if w < 10 && acc' >= acc
+          then decPosIntMore e acc' (advance 1 chunk0)
+          else (# | (# unI acc, unI (offset chunk0), unI (length chunk0)  #) #)
+  else (# | (# unI acc, unI (offset chunk0), 0# #) #)
 
 decSmallWordMore ::
      e -- Error message
@@ -748,16 +940,16 @@ boxBytes (# a, b, c #) = Bytes (ByteArray a) (I# b) (I# c)
 unboxBytes :: Bytes -> Bytes#
 unboxBytes (Bytes (ByteArray a) (I# b) (I# c)) = (# a,b,c #)
 
-unboxResult :: Result e a -> Result# e a
-unboxResult (Success a (I# b) (I# c)) = (# | (# a, b, c #) #)
-unboxResult (Failure e) = (# e | #)
+unboxResult :: InternalResult e a -> Result# e a
+unboxResult (InternalSuccess a (I# b) (I# c)) = (# | (# a, b, c #) #)
+unboxResult (InternalFailure e) = (# e | #)
 
-boxResult :: Result# e a -> Result e a
-boxResult (# | (# a, b, c #) #) = Success a (I# b) (I# c)
-boxResult (# e | #) = Failure e
+boxPublicResult :: Result# e a -> Result e a
+boxPublicResult (# | (# a, _, c #) #) = Success a (I# c)
+boxPublicResult (# e | #) = Failure e
 
 -- | Convert a 'Word32' parser to a 'Word#' parser.
-unboxWord32 :: Parser s e Word32 -> Parser s e Word#
+unboxWord32 :: Parser e s Word32 -> Parser e s Word#
 unboxWord32 (Parser f) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r #) -> case r of
@@ -765,15 +957,34 @@ unboxWord32 (Parser f) = Parser
       (# | (# W32# a, b, c #) #) -> (# s1, (# | (# a, b, c #) #) #)
   )
 
+-- | Convert a @(Int,Int)@ parser to a @(# Int#, Int# #)@ parser.
+unboxIntPair :: Parser e s (Int,Int) -> Parser e s (# Int#, Int# #)
+unboxIntPair (Parser f) = Parser
+  (\x s0 -> case f x s0 of
+    (# s1, r #) -> case r of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# (I# y, I# z), b, c #) #) -> (# s1, (# | (# (# y, z #), b, c #) #) #)
+  )
+
 -- | Convert a 'Word#' parser to a 'Word32' parser. Precondition:
 -- the argument parser only returns words less than 4294967296.
-boxWord32 :: Parser s e Word# -> Parser s e Word32
+boxWord32 :: Parser e s Word# -> Parser e s Word32
 boxWord32 (Parser f) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r #) -> case r of
       (# e | #) -> (# s1, (# e | #) #)
       (# | (# a, b, c #) #) -> (# s1, (# | (# W32# a, b, c #) #) #)
   )
+
+-- | Convert a @(# Int#, Int# #)@ parser to a @(Int,Int)@ parser.
+boxIntPair :: Parser e s (# Int#, Int# #) -> Parser e s (Int,Int)
+boxIntPair (Parser f) = Parser
+  (\x s0 -> case f x s0 of
+    (# s1, r #) -> case r of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# (# y, z #), b, c #) #) -> (# s1, (# | (# (I# y, I# z), b, c #) #) #)
+  )
+
 
 -- | There is a law-abiding instance of 'Alternative' for 'Parser'.
 -- However, it is not terribly useful since error messages seldom
@@ -783,7 +994,7 @@ boxWord32 (Parser f) = Parser
 -- See <https://github.com/bos/attoparsec/issues/122 attoparsec issue #122>
 -- for more discussion of this topic.
 infixl 3 `orElse`
-orElse :: Parser s e a -> Parser s e a -> Parser s e a
+orElse :: Parser x s a -> Parser e s a -> Parser e s a
 {-# inline orElse #-}
 orElse (Parser f) (Parser g) = Parser
   (\x s0 -> case f x s0 of
@@ -847,7 +1058,7 @@ followingByte !w = xor w 0b01000000 .&. 0b11000000 == 0b11000000
 Sometimes, GHC ends up building join points in a way that
 boxes arguments unnecessarily. In this situation, special variants
 of monadic @>>=@ can be helpful. If @C#@, @I#@, etc. never
-get used in you original source code, GHC cannot introduce them.
+get used in your original source code, GHC will not introduce them.
 -}
 
 -- | Specialization of monadic bind for parsers that return 'Char#'.
@@ -861,3 +1072,54 @@ bindChar (Parser f) g = Parser
         runParser (g y) (# arr, b, c #) s1
   )
 
+bindCharToIntPair :: Parser s e Char# -> (Char# -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
+{-# inline bindCharToIntPair #-}
+bindCharToIntPair (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+bindToIntHash :: Parser s e a -> (a -> Parser s e Int#) -> Parser s e Int#
+{-# inline bindToIntHash #-}
+bindToIntHash (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+bindToIntPair :: Parser s e a -> (a -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
+{-# inline bindToIntPair #-}
+bindToIntPair (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+bindIntToIntPair :: Parser s e Int# -> (Int# -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
+{-# inline bindIntToIntPair #-}
+bindIntToIntPair (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+pureIntPair ::
+     (# Int#, Int# #)
+  -> Parser s e (# Int#, Int# #)
+{-# inline pureIntPair #-}
+pureIntPair a = Parser
+  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+
+failIntPair :: e -> Parser e s (# Int#, Int# #)
+{-# inline failIntPair #-}
+failIntPair e = Parser
+  (\(# _, _, _ #) s -> (# s, (# e | #) #))

@@ -37,3 +37,6 @@ test-suite test
     , bytesmith
     , primitive
     , byteslice
+    , tasty-hunit
+    , tasty
+    , tasty-quickcheck
