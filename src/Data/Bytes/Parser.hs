@@ -821,7 +821,13 @@ decPositiveIntegerStart e !chunk0 s0 = if length chunk0 > 0
   then
     let !w = (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
      in if w < (10 :: Word8)
-          then (# s0, decIntegerMore e (fromIntegral w) (advance 1 chunk0) #)
+          then
+            let !r = decPosIntegerChunks
+                  (fromIntegral @Word8 @Int w)
+                  10
+                  0
+                  (advance 1 chunk0)
+             in (# s0, (# | r #) #)
           else (# s0, (# e | #) #)
   else (# s0, (# e | #) #)
 
@@ -881,15 +887,63 @@ decPosIntMore ::
   -> Int -- Accumulator
   -> Bytes -- Chunk
   -> Result# e Int#
-decPosIntMore e !acc !chunk0 = if length chunk0 > 0
+decPosIntMore e !acc !chunk0 = if len > 0
   then
     let !w = fromIntegral @Word8 @Word
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
         !acc' = acc * 10 + (fromIntegral @Word @Int w)
-     in if w < 10 && acc' >= acc
-          then decPosIntMore e acc' (advance 1 chunk0)
-          else (# e | #)
+     in if w < 10
+          then if acc' >= acc
+            then decPosIntMore e acc' (advance 1 chunk0)
+            else (# e | #)
+          else (# | (# unI acc, unI (offset chunk0), len# #) #)
   else (# | (# unI acc, unI (offset chunk0), 0# #) #)
+  where
+  !len@(I# len# ) = length chunk0
+
+-- This will not inline since it is recursive, but worker
+-- wrapper will still happen. When the accumulator
+-- exceeds the size of a machine integer, this pushes the
+-- accumulated machine int and the shift amount onto the
+-- stack.
+-- We are intentionally lazy in the accumulator. There is
+-- no need to force this on every iteration. We do however,
+-- force it preemptively every time it changes.
+decPosIntegerChunks ::
+     Int -- Chunk accumulator (e.g. 236)
+  -> Int -- Chunk base-ten bound (e.g. 1000)
+  -> Integer -- Accumulator
+  -> Bytes -- Chunk
+  -> (# Integer, Int#, Int# #)
+decPosIntegerChunks !nAcc !eAcc acc !chunk0 = if len > 0
+  then
+    let !w = fromIntegral @Word8 @Word
+          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
+     in if w < 10
+          then let !eAcc' = eAcc * 10 in
+            if eAcc' >= eAcc
+              then decPosIntegerChunks
+                (nAcc * 10 + fromIntegral @Word @Int w)
+                eAcc'
+                acc
+                (advance 1 chunk0)
+              else
+                -- In this case, notice that we deliberately
+                -- unconsume the digit that would have caused
+                -- an overflow.
+                let !r = (acc * fromIntegral @Int @Integer eAcc)
+                       + (fromIntegral @Int @Integer nAcc)
+                 in decPosIntegerChunks 0 1 r chunk0
+          else
+            let !r = (acc * fromIntegral @Int @Integer eAcc)
+                   + (fromIntegral @Int @Integer nAcc)
+             in (# r, unI (offset chunk0), len# #)
+  else
+    let !r = (acc * fromIntegral @Int @Integer eAcc)
+           + (fromIntegral @Int @Integer nAcc)
+     in (# r, unI (offset chunk0), 0# #)
+  where
+  !len@(I# len# ) = length chunk0
 
 decSmallWordMore ::
      e -- Error message

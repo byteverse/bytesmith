@@ -34,6 +34,11 @@ tests = testGroup "Parser"
         @=?
         P.parseBytes (P.decUnsignedInt ())
           (bytes "742493495120739103935542")
+    , testCase "B" $
+        P.Success 4654667 3
+        @=?
+        P.parseBytes (P.decUnsignedInt ())
+          (bytes "4654667,55")
     , testProperty "property" $ \(QC.NonNegative i) ->
         P.parseBytes (P.decUnsignedInt ()) (bytes (show i))
         ===
