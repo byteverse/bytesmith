@@ -35,6 +35,7 @@ module Data.Bytes.Parser
   , anyAscii#
   , anyUtf8#
   , anyAsciiOpt
+  , anyUnsafeIso8859_1#
   , decWord
   , decWord8
   , decWord16
@@ -46,6 +47,7 @@ module Data.Bytes.Parser
   , decTrailingInt
   , hexWord16
   , decPositiveInteger
+  , decSignedInteger
   , endOfInput
   , isEndOfInput
   , skipUntilAsciiConsume
@@ -382,6 +384,18 @@ anyAscii# e = Parser
             1# -> (# s0, (# | (# w, off +# 1#, len -# 1# #) #) #)
             _ -> (# s0, (# e | #) #)
   )
+
+-- | Interpret the next byte as a ISO-8859-1-encoded character.
+-- Does not check to see if any characters are left. This is
+-- profoundly unsafe and can cause a segfault if used at the
+-- end of an input byte array. This parser cannot fail.
+anyUnsafeIso8859_1# :: Parser e s Char#
+{-# inline anyUnsafeIso8859_1# #-}
+anyUnsafeIso8859_1# = Parser
+  (\(# arr, off, len #) s0 -> 
+    (# s0, (# | (# indexCharArray# arr off, off +# 1#, len -# 1# #) #) #)
+  )
+
 
 -- | Interpret the next one to four bytes as a UTF-8-encoded character.
 -- Fails if the decoded codepoint is in the range U+D800 through U+DFFF.
@@ -786,6 +800,28 @@ decWordStart e !chunk0 s0 = if length chunk0 > 0
           else (# s0, (# e | #) #)
   else (# s0, (# e | #) #)
 
+decSignedInteger :: e -> Parser e s Integer
+{-# noinline decSignedInteger #-}
+decSignedInteger e = any e >>= \c -> case c of
+  43 -> do -- plus sign
+    decPositiveInteger e
+  45 -> do -- minus sign
+    x <- decPositiveInteger e
+    pure $! negate x
+  _ -> Parser -- no sign, there should be a digit here 
+    (\chunk0 s0 ->
+      let !w = fromIntegral @Word8 @Word c - 48 in
+      if w < 10
+        then
+          let !r = decIntegerChunks
+                (fromIntegral @Word @Int w)
+                10
+                0
+                (boxBytes chunk0)
+           in (# s0, (# | r #) #)
+        else (# s0, (# e | #) #)
+    )
+
 decPosIntStart ::
      e -- Error message
   -> Bytes -- Chunk
@@ -812,7 +848,6 @@ decNegIntStart e !chunk0 s0 = if length chunk0 > 0
           else (# s0, (# e | #) #)
   else (# s0, (# e | #) #)
 
--- No limit on length for integers.
 decPositiveIntegerStart ::
      e
   -> Bytes
@@ -822,7 +857,7 @@ decPositiveIntegerStart e !chunk0 s0 = if length chunk0 > 0
     let !w = (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
      in if w < (10 :: Word8)
           then
-            let !r = decPosIntegerChunks
+            let !r = decIntegerChunks
                   (fromIntegral @Word8 @Int w)
                   10
                   0
@@ -874,8 +909,10 @@ decNegIntMore e !acc !chunk0 = if length chunk0 > 0
     let !w = fromIntegral @Word8 @Word
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
         !acc' = acc * 10 - (fromIntegral @Word @Int w)
-     in if w < 10 && acc' <= acc
-          then decNegIntMore e acc' (advance 1 chunk0)
+     in if w < 10
+          then if acc' <= acc
+            then decNegIntMore e acc' (advance 1 chunk0)
+            else (# e | #)
           else (# | (# unI acc, unI (offset chunk0), unI (length chunk0)  #) #)
   else (# | (# unI acc, unI (offset chunk0), 0# #) #)
 
@@ -909,20 +946,22 @@ decPosIntMore e !acc !chunk0 = if len > 0
 -- We are intentionally lazy in the accumulator. There is
 -- no need to force this on every iteration. We do however,
 -- force it preemptively every time it changes.
-decPosIntegerChunks ::
+-- Because of how we track overflow, we are able to use the
+-- same function for both positive and negative numbers.
+decIntegerChunks ::
      Int -- Chunk accumulator (e.g. 236)
   -> Int -- Chunk base-ten bound (e.g. 1000)
   -> Integer -- Accumulator
   -> Bytes -- Chunk
   -> (# Integer, Int#, Int# #)
-decPosIntegerChunks !nAcc !eAcc acc !chunk0 = if len > 0
+decIntegerChunks !nAcc !eAcc acc !chunk0 = if len > 0
   then
     let !w = fromIntegral @Word8 @Word
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
      in if w < 10
           then let !eAcc' = eAcc * 10 in
             if eAcc' >= eAcc
-              then decPosIntegerChunks
+              then decIntegerChunks
                 (nAcc * 10 + fromIntegral @Word @Int w)
                 eAcc'
                 acc
@@ -933,7 +972,7 @@ decPosIntegerChunks !nAcc !eAcc acc !chunk0 = if len > 0
                 -- an overflow.
                 let !r = (acc * fromIntegral @Int @Integer eAcc)
                        + (fromIntegral @Int @Integer nAcc)
-                 in decPosIntegerChunks 0 1 r chunk0
+                 in decIntegerChunks 0 1 r chunk0
           else
             let !r = (acc * fromIntegral @Int @Integer eAcc)
                    + (fromIntegral @Int @Integer nAcc)
