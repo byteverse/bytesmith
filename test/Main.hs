@@ -28,8 +28,17 @@ tests :: TestTree
 tests = testGroup "Parser"
   [ testProperty "decStandardInt" $ \i ->
       P.parseBytes (P.decStandardInt ()) (bytes (show i)) === P.Success i 0
-  , testProperty "decUnsignedInt" $ \(QC.NonNegative i) ->
-      P.parseBytes (P.decUnsignedInt ()) (bytes (show i)) === P.Success i 0
+  , testGroup "decUnsignedInt"
+    [ testCase "A" $
+        P.Failure ()
+        @=?
+        P.parseBytes (P.decUnsignedInt ())
+          (bytes "742493495120739103935542")
+    , testProperty "property" $ \(QC.NonNegative i) ->
+        P.parseBytes (P.decUnsignedInt ()) (bytes (show i))
+        ===
+        P.Success i 0
+    ]
   , testGroup "decPositiveInteger"
     [ testCase "A" $ 
         P.parseBytes (P.decPositiveInteger ())

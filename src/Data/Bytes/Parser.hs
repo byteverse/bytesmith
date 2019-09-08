@@ -874,7 +874,8 @@ decNegIntMore e !acc !chunk0 = if length chunk0 > 0
   else (# | (# unI acc, unI (offset chunk0), 0# #) #)
 
 -- This will not inline since it is recursive, but worker
--- wrapper will still happen.
+-- wrapper will still happen. Fails if the accumulator
+-- exceeds the size of a machine integer.
 decPosIntMore ::
      e -- Error message
   -> Int -- Accumulator
@@ -887,7 +888,7 @@ decPosIntMore e !acc !chunk0 = if length chunk0 > 0
         !acc' = acc * 10 + (fromIntegral @Word @Int w)
      in if w < 10 && acc' >= acc
           then decPosIntMore e acc' (advance 1 chunk0)
-          else (# | (# unI acc, unI (offset chunk0), unI (length chunk0)  #) #)
+          else (# e | #)
   else (# | (# unI acc, unI (offset chunk0), 0# #) #)
 
 decSmallWordMore ::
