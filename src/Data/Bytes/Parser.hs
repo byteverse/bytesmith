@@ -27,9 +27,6 @@ module Data.Bytes.Parser
     -- * Build Parsers
   , fail
   , peekAnyAscii
-  , ascii
-  , ascii3
-  , ascii4
   , any
   , anyAscii
   , anyAscii#
@@ -101,23 +98,11 @@ import GHC.Exts (indexCharArray#,indexWord8Array#,ord#)
 import GHC.Exts (timesWord#,plusWord#)
 import GHC.Word (Word16(W16#),Word8(W8#),Word32(W32#))
 import Data.Bytes.Types (Bytes(..))
-import qualified Data.Bytes as B
 import Data.Primitive (ByteArray(..))
+import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes,boxBytes,Result#,Bytes#,ST#,uneffectful,fail)
 
-import qualified Control.Applicative
+import qualified Data.Bytes as B
 import qualified Data.Primitive as PM
-import qualified Control.Monad
-
-type Bytes# = (# ByteArray#, Int#, Int# #)
-type ST# s (a :: TYPE r) = State# s -> (# State# s, a #)
-type Result# e (a :: TYPE r) =
-  (# e
-  | (# a, Int#, Int# #) #) -- ints are offset and length
-
--- | A non-resumable parser.
-newtype Parser :: forall (r :: RuntimeRep). Type -> Type -> TYPE r -> Type where
-  Parser :: forall (r :: RuntimeRep) (e :: Type) (s :: Type) (a :: TYPE r).
-    { runParser :: (# ByteArray#, Int#, Int# #) -> ST# s (Result# e a) } -> Parser e s a
 
 -- | The result of running a parser.
 data Result e a
@@ -127,14 +112,6 @@ data Result e a
     -- ^ The parsed value and the number of bytes
     -- remaining in parsed slice.
   deriving (Eq,Show)
-
--- The result of running a parser. Used internally.
-data InternalResult e a
-  = InternalFailure e
-    -- An error message indicating what went wrong.
-  | InternalSuccess !a !Int !Int
-    -- The parsed value, the offset after the last consumed byte, and the
-    -- number of bytes remaining in parsed slice.
 
 -- | Parse a slice of a byte array. This can succeed even if the
 -- entire slice was not consumed by the parser.
@@ -160,51 +137,6 @@ parseBytesST (Parser f) !b = ST
   (\s0 -> case f (unboxBytes b) s0 of
     (# s1, r #) -> (# s1, boxPublicResult r #)
   )
-
-instance Functor (Parser e s) where
-  {-# inline fmap #-}
-  fmap f (Parser g) = Parser
-    (\x s0 -> case g x s0 of
-      (# s1, r #) -> case r of
-        (# e | #) -> (# s1, (# e | #) #)
-        (# | (# a, b, c #) #) -> (# s1, (# | (# f a, b, c #) #) #)
-    )
-
-instance Applicative (Parser e s) where
-  pure = pureParser
-  (<*>) = Control.Monad.ap
-
-instance Monad (Parser e s) where
-  {-# inline return #-}
-  {-# inline (>>=) #-}
-  return = pureParser
-  Parser f >>= g = Parser
-    (\x@(# arr, _, _ #) s0 -> case f x s0 of
-      (# s1, r0 #) -> case r0 of
-        (# e | #) -> (# s1, (# e | #) #)
-        (# | (# y, b, c #) #) ->
-          runParser (g y) (# arr, b, c #) s1
-    )
-
--- | Combines the error messages using '<>' when both
--- parsers fail.
-instance Monoid e => Alternative (Parser e s) where
-  {-# inline empty #-}
-  {-# inline (<|>) #-}
-  empty = fail mempty
-  Parser f <|> Parser g = Parser
-    (\x s0 -> case f x s0 of
-      (# s1, r0 #) -> case r0 of
-        (# eRight | #) -> case g x s1 of
-          (# s2, r1 #) -> case r1 of
-            (# eLeft | #) -> (# s2, (# eRight <> eLeft | #) #)
-            (# | r #) -> (# s2, (# | r #) #)
-        (# | r #) -> (# s1, (# | r #) #)
-    )
-
-pureParser :: a -> Parser e s a
-pureParser a = Parser
-  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
 
 upcastUnitSuccess :: (# Int#, Int# #) -> Result# e ()
 upcastUnitSuccess (# b, c #) = (# | (# (), b, c #) #)
@@ -263,11 +195,6 @@ jump :: Int -> Parser e s ()
 jump ix = uneffectful $ \chunk ->
   InternalSuccess () ix (length chunk + (offset chunk - ix))
 
-uneffectful :: (Bytes -> InternalResult e a) -> Parser e s a
-{-# inline uneffectful #-}
-uneffectful f = Parser
-  ( \b s0 -> (# s0, unboxResult (f (boxBytes b)) #) )
-
 uneffectful# :: (Bytes -> Result# e a) -> Parser e s a
 uneffectful# f = Parser
   ( \b s0 -> (# s0, (f (boxBytes b)) #) )
@@ -282,46 +209,6 @@ effect (ST f) = Parser
   ( \(# _, off, len #) s0 -> case f s0 of
     (# s1, a #) -> (# s1, (# | (# a, off, len #) #) #)
   )
-
--- | Only valid for characters with a Unicode code point lower
--- than 128. This consumes a single byte, decoding it as an ASCII
--- character.
-ascii :: e -> Char -> Parser e s ()
--- GHC should decide to inline this after optimization.
-ascii e !c = uneffectful $ \chunk -> if length chunk > 0
-  then if PM.indexByteArray (array chunk) (offset chunk) == c2w c
-    then InternalSuccess () (offset chunk + 1) (length chunk - 1)
-    else InternalFailure e
-  else InternalFailure e
-
--- | Parse three bytes in succession.
-ascii3 :: e -> Char -> Char -> Char -> Parser e s ()
--- GHC should decide to inline this after optimization.
-ascii3 e !c0 !c1 !c2 = uneffectful $ \chunk ->
-  if | length chunk > 2
-     , PM.indexByteArray (array chunk) (offset chunk) == c2w c0
-     , PM.indexByteArray (array chunk) (offset chunk + 1) == c2w c1
-     , PM.indexByteArray (array chunk) (offset chunk + 2) == c2w c2
-         -> InternalSuccess () (offset chunk + 3) (length chunk - 3)
-     | otherwise -> InternalFailure e
-
--- | Parse four bytes in succession.
-ascii4 :: e -> Char -> Char -> Char -> Char -> Parser e s ()
--- GHC should decide to inline this after optimization.
-ascii4 e !c0 !c1 !c2 !c3 = uneffectful $ \chunk ->
-  if | length chunk > 3
-     , PM.indexByteArray (array chunk) (offset chunk) == c2w c0
-     , PM.indexByteArray (array chunk) (offset chunk + 1) == c2w c1
-     , PM.indexByteArray (array chunk) (offset chunk + 2) == c2w c2
-     , PM.indexByteArray (array chunk) (offset chunk + 3) == c2w c3
-         -> InternalSuccess () (offset chunk + 4) (length chunk - 4)
-     | otherwise -> InternalFailure e
-
--- | Fail with the provided error message.
-fail ::
-     e -- ^ Error message
-  -> Parser e s a
-fail e = uneffectful $ \_ -> InternalFailure e
 
 -- | Interpret the next byte as an ASCII-encoded character.
 -- Fails if the byte corresponds to a number above 127.
@@ -1027,16 +914,6 @@ unW (W# w) = w
 
 unI :: Int -> Int#
 unI (I# w) = w
-
-boxBytes :: Bytes# -> Bytes
-boxBytes (# a, b, c #) = Bytes (ByteArray a) (I# b) (I# c)
-
-unboxBytes :: Bytes -> Bytes#
-unboxBytes (Bytes (ByteArray a) (I# b) (I# c)) = (# a,b,c #)
-
-unboxResult :: InternalResult e a -> Result# e a
-unboxResult (InternalSuccess a (I# b) (I# c)) = (# | (# a, b, c #) #)
-unboxResult (InternalFailure e) = (# e | #)
 
 boxPublicResult :: Result# e a -> Result e a
 boxPublicResult (# | (# a, _, c #) #) = Success a (I# c)
