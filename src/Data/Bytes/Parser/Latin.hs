@@ -20,21 +20,32 @@
 -- ISO 8859-1 (Latin-1). All byte sequences are valid
 -- text under ISO 8859-1.
 module Data.Bytes.Parser.Latin
-  ( char
+  ( -- * Matching
+    char
   , char2
   , char3
   , char4
+    -- * Get Character
   , any
+  , opt
+  , opt#
+    -- * Skip
+  , skipDigits
+  , skipDigits1
+  , skipChar
+  , skipChar1
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
 
 import Data.Bytes.Types (Bytes(..))
-import Data.Bytes.Parser.Internal (Parser(..),uneffectful)
-import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray)
+import Data.Bytes.Parser.Internal (Parser(..),uneffectful,Result#,uneffectful#)
+import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
 import Data.Word (Word8)
 import Data.Char (ord)
+import GHC.Exts (Int(I#),Int#,Char#,(+#),(-#),indexCharArray#)
 
+import qualified Data.Bytes as Bytes
 import qualified Data.Primitive as PM
 
 -- | Consume the next character, failing if it does not
@@ -97,3 +108,92 @@ any e = uneffectful $ \chunk -> if length chunk > 0
      in InternalSuccess c (offset chunk + 1) (length chunk - 1)
   else InternalFailure e
 
+-- | Consume a character from the input or return Nothing if
+-- end of the stream has been reached. Since ISO 8859-1 maps every
+-- bytes to a character, this parser never fails.
+opt :: Parser e s (Maybe Char)
+opt = uneffectful $ \chunk -> case length chunk of
+  0 -> InternalSuccess Nothing (offset chunk) (length chunk)
+  _ -> InternalSuccess
+    (Just (indexLatinCharArray (array chunk) (offset chunk)))
+    (offset chunk + 1) (length chunk - 1)
+
+-- | Variant of @opt@ with unboxed result.
+opt# :: Parser e s (# (# #) | Char# #)
+{-# inline opt# #-}
+opt# = Parser
+  (\(# arr, off, len #) s0 -> case len of
+    0# -> (# s0, (# | (# (# (# #) | #), off, len #) #) #)
+    _ -> (# s0, (# | (# (# | indexCharArray# arr off #), off +# 1#, len -# 1# #) #) #)
+  )
+
+skipDigitsAsciiLoop ::
+     Bytes -- Chunk
+  -> (# Int#, Int# #)
+skipDigitsAsciiLoop !c = if length c > 0
+  then
+    let w = indexLatinCharArray (array c) (offset c)
+     in if w >= '0' && w <= '9'
+          then skipDigitsAsciiLoop (Bytes.unsafeDrop 1 c)
+          else (# unI (offset c), unI (length c) #)
+  else (# unI (offset c), unI (length c) #)
+
+skipDigitsAscii1LoopStart ::
+     e
+  -> Bytes -- chunk
+  -> Result# e ()
+skipDigitsAscii1LoopStart e !c = if length c > 0
+  then 
+    let w = indexLatinCharArray (array c) (offset c)
+     in if w >= '0' && w <= '9'
+          then upcastUnitSuccess (skipDigitsAsciiLoop (Bytes.unsafeDrop 1 c))
+          else (# e | #)
+  else (# e | #)
+
+-- | Variant of 'skipDigits' that requires at least one digit
+-- to be present.
+skipDigits1 :: e -> Parser e s ()
+skipDigits1 e = uneffectful# $ \c ->
+  skipDigitsAscii1LoopStart e c
+
+-- | Skip the characters @0-9@ until a non-digit is encountered.
+-- This parser does not fail.
+skipDigits :: Parser e s ()
+skipDigits = uneffectful# $ \c ->
+  upcastUnitSuccess (skipDigitsAsciiLoop c)
+
+unI :: Int -> Int#
+unI (I# w) = w
+
+-- | Skip the character any number of times. This succeeds
+-- even if the character was not present.
+skipChar :: Char -> Parser e s ()
+skipChar !w = uneffectful# $ \c ->
+  upcastUnitSuccess (skipLoop w c)
+
+-- | Skip the character any number of times. It must occur
+-- at least once or else this will fail.
+skipChar1 :: e -> Char -> Parser e s ()
+skipChar1 e !w = uneffectful# $ \c ->
+  skipLoop1Start e w c
+
+skipLoop ::
+     Char -- byte to match
+  -> Bytes -- Chunk
+  -> (# Int#, Int# #)
+skipLoop !w !c = if length c > 0
+  then if indexLatinCharArray (array c) (offset c) == w
+    then skipLoop w (Bytes.unsafeDrop 1 c)
+    else (# unI (offset c), unI (length c) #)
+  else (# unI (offset c), unI (length c) #)
+
+skipLoop1Start ::
+     e
+  -> Char -- byte to match
+  -> Bytes -- chunk
+  -> Result# e ()
+skipLoop1Start e !w !chunk0 = if length chunk0 > 0
+  then if indexLatinCharArray (array chunk0) (offset chunk0) == w
+    then upcastUnitSuccess (skipLoop w (Bytes.unsafeDrop 1 chunk0))
+    else (# e | #)
+  else (# e | #)

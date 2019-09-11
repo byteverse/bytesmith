@@ -26,12 +26,8 @@ module Data.Bytes.Parser
   , parseBytesST
     -- * Build Parsers
   , fail
-  , peekAnyAscii
   , any
-  , anyAscii
-  , anyAscii#
   , anyUtf8#
-  , anyAsciiOpt
   , anyUnsafeIso8859_1#
   , decWord
   , decWord8
@@ -50,21 +46,8 @@ module Data.Bytes.Parser
   , skipUntilAsciiConsume
   , takeWhile
   , skipWhile
-  , skipAscii
-  , skipAscii1
-  , skipAlphaAscii
-  , skipAlphaAscii1
-  , skipDigitsAscii
-  , skipDigitsAscii1
     -- * Lift Effects
   , effect
-    -- * Expose Internals
-    -- | Everything in this section is unsafe and can lead to
-    -- nondeterministic output or segfaults if used incorrectly.
-  , cursor
-  , expose
-  , unconsume
-  , jump
     -- * Cut down on boxing
   , unboxWord32
   , boxWord32
@@ -99,7 +82,8 @@ import GHC.Exts (timesWord#,plusWord#)
 import GHC.Word (Word16(W16#),Word8(W8#),Word32(W32#))
 import Data.Bytes.Types (Bytes(..))
 import Data.Primitive (ByteArray(..))
-import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes,boxBytes,Result#,Bytes#,ST#,uneffectful,fail)
+import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes,boxBytes,Result#,Bytes#,ST#,uneffectful,uneffectful#,fail,upcastUnitSuccess)
+import Data.Bytes.Parser.Unsafe (unconsume)
 
 import qualified Data.Bytes as B
 import qualified Data.Primitive as PM
@@ -138,9 +122,6 @@ parseBytesST (Parser f) !b = ST
     (# s1, r #) -> (# s1, boxPublicResult r #)
   )
 
-upcastUnitSuccess :: (# Int#, Int# #) -> Result# e ()
-upcastUnitSuccess (# b, c #) = (# | (# (), b, c #) #)
-
 upcastWordResult :: Result# e Word# -> Result# e Word
 upcastWordResult (# e | #) = (# e | #)
 upcastWordResult (# | (# a, b, c #) #) = (# | (# W# a, b, c #) #)
@@ -167,38 +148,6 @@ upcastWord8Result (# | (# a, b, c #) #) = (# | (# W8# a, b, c #) #)
 c2w :: Char -> Word8
 c2w = fromIntegral . ord
 
--- | Get the current offset into the chunk. Using this makes
--- it possible to observe the internal difference between 'Bytes'
--- that refer to equivalent slices. Be careful.
-cursor :: Parser e s Int
-cursor = uneffectful $ \chunk ->
-  InternalSuccess (offset chunk) (offset chunk) (length chunk)
-
--- | Return the byte array being parsed. This includes bytes
--- that preceed the current offset and may include bytes that
--- go beyond the length. This is somewhat dangerous, so only
--- use this is you know what you're doing.
-expose :: Parser e s ByteArray
-expose = uneffectful $ \chunk ->
-  InternalSuccess (array chunk) (offset chunk) (length chunk)
-
--- | Move the cursor back by @n@ bytes. Precondition: you
--- must have previously consumed at least @n@ bytes.
-unconsume :: Int -> Parser e s ()
-unconsume n = uneffectful $ \chunk ->
-  InternalSuccess () (offset chunk - n) (length chunk + n)
-
--- | Set the position to the given index. Precondition: the index
--- must be valid. It should be the result of an earlier call to
--- 'cursor'.
-jump :: Int -> Parser e s ()
-jump ix = uneffectful $ \chunk ->
-  InternalSuccess () ix (length chunk + (offset chunk - ix))
-
-uneffectful# :: (Bytes -> Result# e a) -> Parser e s a
-uneffectful# f = Parser
-  ( \b s0 -> (# s0, (f (boxBytes b)) #) )
-
 uneffectfulWord# :: (Bytes -> Result# e Word#) -> Parser e s Word#
 uneffectfulWord# f = Parser
   ( \b s0 -> (# s0, (f (boxBytes b)) #) )
@@ -209,20 +158,6 @@ effect (ST f) = Parser
   ( \(# _, off, len #) s0 -> case f s0 of
     (# s1, a #) -> (# s1, (# | (# a, off, len #) #) #)
   )
-
--- | Interpret the next byte as an ASCII-encoded character.
--- Fails if the byte corresponds to a number above 127.
-peekAnyAscii :: e -> Parser e s Char
-peekAnyAscii e = uneffectful $ \chunk -> if length chunk > 0
-  then
-    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
-     in if w < 128
-          then InternalSuccess
-                 (C# (chr# (unI (fromIntegral w))))
-                 (offset chunk)
-                 (length chunk)
-          else InternalFailure e
-  else InternalFailure e
 
 -- | Consumes and returns the next byte in the input.
 -- Fails if no characters are left.
@@ -257,20 +192,6 @@ anyAscii e = uneffectful $ \chunk -> if length chunk > 0
                  (length chunk - 1)
           else InternalFailure e
   else InternalFailure e
-
--- | Interpret the next byte as an ASCII-encoded character.
--- Fails if the byte corresponds to a number above 127.
-anyAscii# :: e -> Parser e s Char#
-{-# inline anyAscii# #-}
-anyAscii# e = Parser
-  (\(# arr, off, len #) s0 -> case len of
-    0# -> (# s0, (# e | #) #)
-    _ ->
-      let !w = indexCharArray# arr off
-       in case ord# w <# 128# of
-            1# -> (# s0, (# | (# w, off +# 1#, len -# 1# #) #) #)
-            _ -> (# s0, (# e | #) #)
-  )
 
 -- | Interpret the next byte as a ISO-8859-1-encoded character.
 -- Does not check to see if any characters are left. This is
@@ -322,22 +243,6 @@ anyUtf8# e = Parser
              | otherwise -> (# s0, (# e | #) #)
     _ -> (# s0, (# e | #) #)
   )
-
--- | Interpret the next byte as an ASCII-encoded character.
--- Fails if the byte corresponds to a number above 127. Returns
--- nothing if the end of the input has been reached.
-anyAsciiOpt :: e -> Parser e s (Maybe Char)
-{-# inline anyAsciiOpt #-}
-anyAsciiOpt e = uneffectful $ \chunk -> if length chunk > 0
-  then
-    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
-     in if w < 128
-          then InternalSuccess
-                 (Just (C# (chr# (unI (fromIntegral w)))))
-                 (offset chunk + 1)
-                 (length chunk - 1)
-          else InternalFailure e
-  else InternalSuccess Nothing (offset chunk) (length chunk)
 
 -- | Take while the predicate is matched. This is always inlined.
 takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
@@ -399,107 +304,6 @@ oneHex w
   | w >= 97 && w < 103 = (fromIntegral w - 87)
   | otherwise = maxBound
 
--- | Skip ASCII-encoded digits until a non-digit is encountered.
-skipDigitsAscii :: Parser e s ()
-skipDigitsAscii = uneffectful# $ \c ->
-  upcastUnitSuccess (skipDigitsAsciiLoop c)
-
--- | Skip uppercase and lowercase letters until a non-alpha
--- character is encountered.
-skipDigitsAscii1 :: e -> Parser e s ()
-skipDigitsAscii1 e = uneffectful# $ \c ->
-  skipDigitsAscii1LoopStart e c
-
--- | Skip uppercase and lowercase letters until a non-alpha
--- character is encountered.
-skipAlphaAscii :: Parser e s ()
-skipAlphaAscii = uneffectful# $ \c ->
-  upcastUnitSuccess (skipAlphaAsciiLoop c)
-
--- | Skip uppercase and lowercase letters until a non-alpha
--- character is encountered.
-skipAlphaAscii1 :: e -> Parser e s ()
-skipAlphaAscii1 e = uneffectful# $ \c ->
-  skipAlphaAsciiLoop1Start e c
-
--- | Skip the character any number of times. This succeeds
--- even if the character was not present.
-skipAscii :: Char -> Parser e s ()
-skipAscii !w = uneffectful# $ \c ->
-  upcastUnitSuccess (skipLoop (c2w w) c)
-
--- | Skip the character any number of times. It must occur
--- at least once or else this will fail.
-skipAscii1 :: e -> Char -> Parser e s ()
-skipAscii1 e !w = uneffectful# $ \c ->
-  skipLoop1Start e (c2w w) c
-
-skipDigitsAsciiLoop ::
-     Bytes -- Chunk
-  -> (# Int#, Int# #)
-skipDigitsAsciiLoop !c = if length c > 0
-  then
-    let w = PM.indexByteArray (array c) (offset c) :: Word8
-     in if w >= c2w '0' && w <= c2w '9'
-          then skipDigitsAsciiLoop (advance 1 c)
-          else (# unI (offset c), unI (length c) #)
-  else (# unI (offset c), unI (length c) #)
-
-skipAlphaAsciiLoop ::
-     Bytes -- Chunk
-  -> (# Int#, Int# #)
-skipAlphaAsciiLoop !c = if length c > 0
-  then
-    let w = PM.indexByteArray (array c) (offset c) :: Word8
-     in if (w >= c2w 'a' && w <= c2w 'z') || (w >= c2w 'A' && w <= c2w 'Z')
-          then skipAlphaAsciiLoop (advance 1 c)
-          else (# unI (offset c), unI (length c) #)
-  else (# unI (offset c), unI (length c) #)
-
-skipAlphaAsciiLoop1Start ::
-     e
-  -> Bytes -- chunk
-  -> Result# e ()
-skipAlphaAsciiLoop1Start e !c = if length c > 0
-  then 
-    let w = PM.indexByteArray (array c) (offset c) :: Word8
-     in if (w >= c2w 'a' && w <= c2w 'z') || (w >= c2w 'A' && w <= c2w 'Z')
-          then upcastUnitSuccess (skipAlphaAsciiLoop (advance 1 c))
-          else (# e | #)
-  else (# e | #)
-
-skipDigitsAscii1LoopStart ::
-     e
-  -> Bytes -- chunk
-  -> Result# e ()
-skipDigitsAscii1LoopStart e !c = if length c > 0
-  then 
-    let w = PM.indexByteArray (array c) (offset c) :: Word8
-     in if w >= c2w '0' && w <= c2w '9'
-          then upcastUnitSuccess (skipDigitsAsciiLoop (advance 1 c))
-          else (# e | #)
-  else (# e | #)
-
-skipLoop ::
-     Word8 -- byte to match
-  -> Bytes -- Chunk
-  -> (# Int#, Int# #)
-skipLoop !w !c = if length c > 0
-  then if PM.indexByteArray (array c) (offset c) == w
-    then skipLoop w (advance 1 c)
-    else (# unI (offset c), unI (length c) #)
-  else (# unI (offset c), unI (length c) #)
-
-skipLoop1Start ::
-     e
-  -> Word8 -- byte to match
-  -> Bytes -- chunk
-  -> Result# e ()
-skipLoop1Start e !w !chunk0 = if length chunk0 > 0
-  then if PM.indexByteArray (array chunk0) (offset chunk0) == w
-    then upcastUnitSuccess (skipLoop w (advance 1 chunk0))
-    else (# e | #)
-  else (# e | #)
 
 -- | Skip bytes until the character from the ASCII plane is encountered.
 -- This does not ensure that the skipped bytes were ASCII-encoded

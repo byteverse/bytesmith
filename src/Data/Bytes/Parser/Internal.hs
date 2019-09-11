@@ -23,11 +23,13 @@ module Data.Bytes.Parser.Internal
   , ST#
   , Result#
   , uneffectful
+  , uneffectful#
   , boxBytes
   , unboxBytes
   , unboxResult
   , fail
   , indexLatinCharArray
+  , upcastUnitSuccess
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
@@ -134,3 +136,13 @@ indexLatinCharArray :: ByteArray -> Int -> Char
 {-# inline indexLatinCharArray #-}
 indexLatinCharArray (ByteArray arr) (I# off) =
   C# (Exts.indexCharArray# arr off)
+
+uneffectful# :: (Bytes -> Result# e a) -> Parser e s a
+{-# inline uneffectful# #-}
+uneffectful# f = Parser
+  ( \b s0 -> (# s0, (f (boxBytes b)) #) )
+
+upcastUnitSuccess :: (# Int#, Int# #) -> Result# e ()
+{-# inline upcastUnitSuccess #-}
+upcastUnitSuccess (# b, c #) = (# | (# (), b, c #) #)
+
