@@ -22,7 +22,7 @@ library
     Data.Bytes.Parser.Ascii
     Data.Bytes.Parser.Latin
     Data.Bytes.Parser.Unsafe
-    -- Data.Bytes.Parser.Utf8
+    Data.Bytes.Parser.Utf8
   other-modules:
     Data.Bytes.Parser.Internal
   build-depends:

@@ -27,20 +27,8 @@ module Data.Bytes.Parser
     -- * Build Parsers
   , fail
   , any
-  , anyUtf8#
   , anyUnsafeIso8859_1#
-  , decWord
-  , decWord8
-  , decWord16
-  , decWord32
-  , decUnsignedInt
-  , decUnsignedInt#
-  , decSignedInt
-  , decStandardInt
-  , decTrailingInt
   , hexWord16
-  , decPositiveInteger
-  , decSignedInteger
   , endOfInput
   , isEndOfInput
   , skipUntilAsciiConsume
@@ -55,10 +43,11 @@ module Data.Bytes.Parser
   , boxIntPair
     -- * Specialized Bind
     -- $bind
-  , bindChar
-  , bindToIntPair
-  , bindIntToIntPair
-  , bindCharToIntPair
+  , bindFromCharToLifted
+  , bindFromLiftedToIntPair
+  , bindFromLiftedToInt
+  , bindFromIntToIntPair
+  , bindFromCharToIntPair
     -- * Specialized Pure
   , pureIntPair
     -- * Specialized Fail
@@ -79,11 +68,11 @@ import GHC.Exts (Int(I#),Char(C#),chr#,RuntimeRep)
 import GHC.Exts (Char#,(+#),(-#),(<#),(>#),word2Int#)
 import GHC.Exts (indexCharArray#,indexWord8Array#,ord#)
 import GHC.Exts (timesWord#,plusWord#)
-import GHC.Word (Word16(W16#),Word8(W8#),Word32(W32#))
 import Data.Bytes.Types (Bytes(..))
 import Data.Primitive (ByteArray(..))
 import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes,boxBytes,Result#,Bytes#,ST#,uneffectful,uneffectful#,fail,upcastUnitSuccess)
 import Data.Bytes.Parser.Unsafe (unconsume)
+import GHC.Word (Word32(W32#),Word16(W16#),Word8(W8#))
 
 import qualified Data.Bytes as B
 import qualified Data.Primitive as PM
@@ -122,29 +111,6 @@ parseBytesST (Parser f) !b = ST
     (# s1, r #) -> (# s1, boxPublicResult r #)
   )
 
-upcastWordResult :: Result# e Word# -> Result# e Word
-upcastWordResult (# e | #) = (# e | #)
-upcastWordResult (# | (# a, b, c #) #) = (# | (# W# a, b, c #) #)
-
-upcastIntResult :: Result# e Int# -> Result# e Int
-upcastIntResult (# e | #) = (# e | #)
-upcastIntResult (# | (# a, b, c #) #) = (# | (# I# a, b, c #) #)
-
--- Precondition: the word is small enough
-upcastWord16Result :: Result# e Word# -> Result# e Word16
-upcastWord16Result (# e | #) = (# e | #)
-upcastWord16Result (# | (# a, b, c #) #) = (# | (# W16# a, b, c #) #)
-
--- Precondition: the word is small enough
-upcastWord32Result :: Result# e Word# -> Result# e Word32
-upcastWord32Result (# e | #) = (# e | #)
-upcastWord32Result (# | (# a, b, c #) #) = (# | (# W32# a, b, c #) #)
-
--- Precondition: the word is small enough
-upcastWord8Result :: Result# e Word# -> Result# e Word8
-upcastWord8Result (# e | #) = (# e | #)
-upcastWord8Result (# | (# a, b, c #) #) = (# | (# W8# a, b, c #) #)
-
 c2w :: Char -> Word8
 c2w = fromIntegral . ord
 
@@ -178,21 +144,6 @@ anyUnsafe = uneffectful $ \chunk ->
   let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
    in InternalSuccess w (offset chunk + 1) (length chunk - 1)
 
--- | Interpret the next byte as an ASCII-encoded character.
--- Fails if the byte corresponds to a number above 127.
-anyAscii :: e -> Parser e s Char
-{-# inline anyAscii #-}
-anyAscii e = uneffectful $ \chunk -> if length chunk > 0
-  then
-    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
-     in if w < 128
-          then InternalSuccess
-                 (C# (chr# (unI (fromIntegral w))))
-                 (offset chunk + 1)
-                 (length chunk - 1)
-          else InternalFailure e
-  else InternalFailure e
-
 -- | Interpret the next byte as a ISO-8859-1-encoded character.
 -- Does not check to see if any characters are left. This is
 -- profoundly unsafe and can cause a segfault if used at the
@@ -204,45 +155,6 @@ anyUnsafeIso8859_1# = Parser
     (# s0, (# | (# indexCharArray# arr off, off +# 1#, len -# 1# #) #) #)
   )
 
-
--- | Interpret the next one to four bytes as a UTF-8-encoded character.
--- Fails if the decoded codepoint is in the range U+D800 through U+DFFF.
-anyUtf8# :: e -> Parser e s Char#
-{-# noinline anyUtf8# #-}
-anyUtf8# e = Parser
-  (\(# arr, off, len #) s0 -> case len ># 0# of
-    1# ->
-      let !w0 = indexWord8Array# arr off
-       in if | oneByteChar (W8# w0) -> 
-                 (# s0, (# | (# chr# (word2Int# w0), off +# 1#, len -# 1# #) #) #)
-             | twoByteChar (W8# w0) ->
-                 if | I# len > 1
-                    , w1 <- indexWord8Array# arr (off +# 1#)
-                    , followingByte (W8# w1)
-                    , C# c <- codepointFromTwoBytes (W8# w0) (W8# w1)
-                      -> (# s0, (# | (# c, off +# 2#, len -# 2# #) #) #)
-                    | otherwise -> (# s0, (# e | #) #)
-             | threeByteChar (W8# w0) ->
-                 if | I# len > 2
-                    , w1 <- indexWord8Array# arr (off +# 1# )
-                    , w2 <- indexWord8Array# arr (off +# 2# )
-                    , followingByte (W8# w1)
-                    , !c@(C# c#) <- codepointFromThreeBytes (W8# w0) (W8# w1) (W8# w2)
-                    , c < '\xD800' || c > '\xDFFF'
-                      -> (# s0, (# | (# c#, off +# 3#, len -# 3# #) #) #)
-                    | otherwise -> (# s0, (# e | #) #)
-             | fourByteChar (W8# w0) ->
-                 if | I# len > 3
-                    , w1 <- indexWord8Array# arr (off +# 1# )
-                    , w2 <- indexWord8Array# arr (off +# 2# )
-                    , w3 <- indexWord8Array# arr (off +# 3# )
-                    , followingByte (W8# w1)
-                    , !(C# c#) <- codepointFromFourBytes (W8# w0) (W8# w1) (W8# w2) (W8# w3)
-                      -> (# s0, (# | (# c#, off +# 4#, len -# 4# #) #) #)
-                    | otherwise -> (# s0, (# e | #) #)
-             | otherwise -> (# s0, (# e | #) #)
-    _ -> (# s0, (# e | #) #)
-  )
 
 -- | Take while the predicate is matched. This is always inlined.
 takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
@@ -337,384 +249,9 @@ isEndOfInput :: Parser e s Bool
 isEndOfInput = uneffectful $ \chunk ->
   InternalSuccess (length chunk == 0) (offset chunk) (length chunk)
 
--- | Parse a decimal-encoded 8-bit word. If the number is larger
--- than 255, this parser fails.
-decWord8 :: e -> Parser e s Word8
-decWord8 e = Parser
-  (\chunk0 s0 -> case decSmallWordStart e 256 (boxBytes chunk0) s0 of
-    (# s1, r #) -> (# s1, upcastWord8Result r #)
-  )
-
--- | Parse a decimal-encoded 16-bit word. If the number is larger
--- than 65535, this parser fails.
-decWord16 :: e -> Parser e s Word16
-decWord16 e = Parser
-  (\chunk0 s0 -> case decSmallWordStart e 65536 (boxBytes chunk0) s0 of
-    (# s1, r #) -> (# s1, upcastWord16Result r #)
-  )
-
--- | Parse a decimal-encoded 32-bit word. If the number is larger
--- than 4294967295, this parser fails.
-decWord32 :: e -> Parser e s Word32
--- This will not work on 32-bit platforms.
-decWord32 e = Parser
-  (\chunk0 s0 -> case decSmallWordStart e 4294967296 (boxBytes chunk0) s0 of
-    (# s1, r #) -> (# s1, upcastWord32Result r #)
-  )
-
--- | Parse a decimal-encoded number. If the number is too large to be
--- represented by a machine word, this fails with the provided
--- error message. This accepts any number of leading zeroes.
-decWord :: e -> Parser e s Word
-decWord e = Parser
-  (\chunk0 s0 -> case decWordStart e (boxBytes chunk0) s0 of
-    (# s1, r #) -> (# s1, upcastWordResult r #)
-  )
-
--- | Parse a decimal-encoded number. If the number is too large to be
--- represented by a machine integer, this fails with the provided
--- error message. This rejects input with that is preceeded by plus
--- or minus. Consequently, it does not parse negative numbers. Use
--- 'decStandardInt' or 'decSignedInt' for that purpose. On a 64-bit
--- platform 'decWord' will successfully parse 9223372036854775808
--- (i.e. @2 ^ 63@), but 'decUnsignedInt' will fail. This allows
--- leading zeroes.
-decUnsignedInt :: e -> Parser e s Int
-decUnsignedInt e = Parser
-  (\chunk0 s0 -> case decPosIntStart e (boxBytes chunk0) s0 of
-    (# s1, r #) -> (# s1, upcastIntResult r #)
-  )
-
--- | Variant of 'decUnsignedInt' with an unboxed result.
-decUnsignedInt# :: e -> Parser e s Int#
-decUnsignedInt# e = Parser
-  (\chunk0 s0 -> decPosIntStart e (boxBytes chunk0) s0)
-
--- | Parse a decimal-encoded number. If the number is too large to be
--- represented by a machine integer, this fails with the provided
--- error message. This allows the number to optionally be prefixed
--- by plus or minus. If the sign prefix is not present, the number
--- is interpreted as positive. This allows leading zeroes.
-decSignedInt :: e -> Parser e s Int
-decSignedInt e = Parser
-  (\chunk0 s0 -> case runParser (decSignedInt# e) chunk0 s0 of
-    (# s1, r #) -> (# s1, upcastIntResult r #)
-  )
-
--- | Variant of 'decUnsignedInt' that lets the caller supply a leading
--- digit. This is useful when parsing a language where integers with
--- leading zeroes are considered invalid. The caller must consume the
--- plus or minus sign (if either of those are allowed) and the first
--- digit before calling this parser.
-decTrailingInt ::
-     e -- ^ Error message
-  -> Int -- ^ Leading digit, should be between @-9@ and @9@.
-  -> Parser e s Int
-decTrailingInt e !w = Parser
-  (\chunk0 s0 -> case runParser (decTrailingInt# e w) chunk0 s0 of
-    (# s1, r #) -> (# s1, upcastIntResult r #)
-  )
-
-decTrailingInt# ::
-     e -- Error message
-  -> Int -- Leading digit, should be between @-9@ and @9@.
-  -> Parser e s Int#
-decTrailingInt# e !w = if w >= 0
-  then Parser (\chunk0 s0 -> (# s0, decPosIntMore e w (boxBytes chunk0) #))
-  else Parser (\chunk0 s0 -> (# s0, decNegIntMore e w (boxBytes chunk0) #))
-
--- | Parse a decimal-encoded number. If the number is too large to be
--- represented by a machine integer, this fails with the provided
--- error message. This allows the number to optionally be prefixed
--- by minus. If the minus prefix is not present, the number
--- is interpreted as positive. The disallows a leading plus sign.
--- For example, 'decStandardInt' rejects @+42@, but 'decSignedInt'
--- allows it.
-decStandardInt :: e -> Parser e s Int
-decStandardInt e = Parser
-  (\chunk0 s0 -> case runParser (decStandardInt# e) chunk0 s0 of
-    (# s1, r #) -> (# s1, upcastIntResult r #)
-  )
-
-decSignedInt# :: e -> Parser e s Int#
-{-# noinline decSignedInt# #-}
-decSignedInt# e = any e `bindToIntHash` \c -> case c of
-  43 -> Parser -- plus sign
-    (\chunk0 s0 -> decPosIntStart e (boxBytes chunk0) s0)
-  45 -> Parser -- minus sign
-    (\chunk0 s0 -> decNegIntStart e (boxBytes chunk0) s0)
-  _ -> Parser -- no sign, there should be a digit here 
-    (\chunk0 s0 ->
-      let !w = fromIntegral @Word8 @Word c - 48
-        in if w < 10
-             then (# s0, decPosIntMore e (fromIntegral @Word @Int w) (boxBytes chunk0) #)
-             else (# s0, (# e | #) #)
-    )
-
--- This is the same as decSignedInt except that we disallow
--- a leading plus sign.
-decStandardInt# :: e -> Parser e s Int#
-{-# noinline decStandardInt# #-}
-decStandardInt# e = any e `bindToIntHash` \c -> case c of
-  45 -> Parser -- minus sign
-    (\chunk0 s0 -> decNegIntStart e (boxBytes chunk0) s0)
-  _ -> Parser -- no sign, there should be a digit here 
-    (\chunk0 s0 ->
-      let !w = fromIntegral @Word8 @Word c - 48
-        in if w < 10
-             then (# s0, decPosIntMore e (fromIntegral @Word @Int w) (boxBytes chunk0) #)
-             else (# s0, (# e | #) #)
-    )
-
--- | Parse a decimal-encoded positive integer of arbitrary
--- size. Note: this is not implemented efficiently. This
--- pulls in one digit at a time, multiplying the accumulator
--- by ten each time and adding the new digit. Since
--- arithmetic involving arbitrary-precision integers is
--- somewhat expensive, it would be better to pull in several
--- digits at a time, convert those to a machine-sized integer,
--- then upcast and perform the multiplication and addition.
-decPositiveInteger :: e -> Parser e s Integer
-decPositiveInteger e = Parser
-  (\chunk0 s0 -> decPositiveIntegerStart e (boxBytes chunk0) s0)
-
-decWordStart ::
-     e -- Error message
-  -> Bytes -- Chunk
-  -> ST# s (Result# e Word# )
-decWordStart e !chunk0 s0 = if length chunk0 > 0
-  then
-    let !w = fromIntegral @Word8 @Word
-          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-     in if w < 10
-          then (# s0, decWordMore e w (advance 1 chunk0) #)
-          else (# s0, (# e | #) #)
-  else (# s0, (# e | #) #)
-
-decSignedInteger :: e -> Parser e s Integer
-{-# noinline decSignedInteger #-}
-decSignedInteger e = any e >>= \c -> case c of
-  43 -> do -- plus sign
-    decPositiveInteger e
-  45 -> do -- minus sign
-    x <- decPositiveInteger e
-    pure $! negate x
-  _ -> Parser -- no sign, there should be a digit here 
-    (\chunk0 s0 ->
-      let !w = fromIntegral @Word8 @Word c - 48 in
-      if w < 10
-        then
-          let !r = decIntegerChunks
-                (fromIntegral @Word @Int w)
-                10
-                0
-                (boxBytes chunk0)
-           in (# s0, (# | r #) #)
-        else (# s0, (# e | #) #)
-    )
-
-decPosIntStart ::
-     e -- Error message
-  -> Bytes -- Chunk
-  -> ST# s (Result# e Int# )
-decPosIntStart e !chunk0 s0 = if length chunk0 > 0
-  then
-    let !w = fromIntegral @Word8 @Word
-          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-     in if w < 10
-          then (# s0, decPosIntMore e (fromIntegral @Word @Int w) (advance 1 chunk0) #)
-          else (# s0, (# e | #) #)
-  else (# s0, (# e | #) #)
-
-decNegIntStart ::
-     e -- Error message
-  -> Bytes -- Chunk
-  -> ST# s (Result# e Int# )
-decNegIntStart e !chunk0 s0 = if length chunk0 > 0
-  then
-    let !w = fromIntegral @Word8 @Word
-          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-     in if w < 10
-          then (# s0, decNegIntMore e (negate (fromIntegral @Word @Int w)) (advance 1 chunk0) #)
-          else (# s0, (# e | #) #)
-  else (# s0, (# e | #) #)
-
-decPositiveIntegerStart ::
-     e
-  -> Bytes
-  -> ST# s (Result# e Integer)
-decPositiveIntegerStart e !chunk0 s0 = if length chunk0 > 0
-  then
-    let !w = (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-     in if w < (10 :: Word8)
-          then
-            let !r = decIntegerChunks
-                  (fromIntegral @Word8 @Int w)
-                  10
-                  0
-                  (advance 1 chunk0)
-             in (# s0, (# | r #) #)
-          else (# s0, (# e | #) #)
-  else (# s0, (# e | #) #)
-
-decSmallWordStart ::
-     e -- Error message
-  -> Word -- Upper Bound
-  -> Bytes -- Chunk
-  -> ST# s (Result# e Word# )
-decSmallWordStart e !limit !chunk0 s0 = if length chunk0 > 0
-  then
-    let !w = fromIntegral @Word8 @Word
-          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-     in if w < 10
-          then (# s0, decSmallWordMore e w limit (advance 1 chunk0) #)
-          else (# s0, (# e | #) #)
-  else (# s0, (# e | #) #)
-
--- This will not inline since it is recursive, but worker
--- wrapper will still happen.
-decWordMore ::
-     e -- Error message
-  -> Word -- Accumulator
-  -> Bytes -- Chunk
-  -> Result# e Word#
-decWordMore e !acc !chunk0 = if length chunk0 > 0
-  then
-    let !w = fromIntegral @Word8 @Word
-          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-        !acc' = acc * 10 + w
-     in if w < 10 && acc' >= acc
-          then decWordMore e acc' (advance 1 chunk0)
-          else (# | (# unW acc, unI (offset chunk0), unI (length chunk0)  #) #)
-  else (# | (# unW acc, unI (offset chunk0), 0# #) #)
-
--- This will not inline since it is recursive, but worker
--- wrapper will still happen.
-decNegIntMore ::
-     e -- Error message
-  -> Int -- Accumulator
-  -> Bytes -- Chunk
-  -> Result# e Int#
-decNegIntMore e !acc !chunk0 = if length chunk0 > 0
-  then
-    let !w = fromIntegral @Word8 @Word
-          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-        !acc' = acc * 10 - (fromIntegral @Word @Int w)
-     in if w < 10
-          then if acc' <= acc
-            then decNegIntMore e acc' (advance 1 chunk0)
-            else (# e | #)
-          else (# | (# unI acc, unI (offset chunk0), unI (length chunk0)  #) #)
-  else (# | (# unI acc, unI (offset chunk0), 0# #) #)
-
--- This will not inline since it is recursive, but worker
--- wrapper will still happen. Fails if the accumulator
--- exceeds the size of a machine integer.
-decPosIntMore ::
-     e -- Error message
-  -> Int -- Accumulator
-  -> Bytes -- Chunk
-  -> Result# e Int#
-decPosIntMore e !acc !chunk0 = if len > 0
-  then
-    let !w = fromIntegral @Word8 @Word
-          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-        !acc' = acc * 10 + (fromIntegral @Word @Int w)
-     in if w < 10
-          then if acc' >= acc
-            then decPosIntMore e acc' (advance 1 chunk0)
-            else (# e | #)
-          else (# | (# unI acc, unI (offset chunk0), len# #) #)
-  else (# | (# unI acc, unI (offset chunk0), 0# #) #)
-  where
-  !len@(I# len# ) = length chunk0
-
--- This will not inline since it is recursive, but worker
--- wrapper will still happen. When the accumulator
--- exceeds the size of a machine integer, this pushes the
--- accumulated machine int and the shift amount onto the
--- stack.
--- We are intentionally lazy in the accumulator. There is
--- no need to force this on every iteration. We do however,
--- force it preemptively every time it changes.
--- Because of how we track overflow, we are able to use the
--- same function for both positive and negative numbers.
-decIntegerChunks ::
-     Int -- Chunk accumulator (e.g. 236)
-  -> Int -- Chunk base-ten bound (e.g. 1000)
-  -> Integer -- Accumulator
-  -> Bytes -- Chunk
-  -> (# Integer, Int#, Int# #)
-decIntegerChunks !nAcc !eAcc acc !chunk0 = if len > 0
-  then
-    let !w = fromIntegral @Word8 @Word
-          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-     in if w < 10
-          then let !eAcc' = eAcc * 10 in
-            if eAcc' >= eAcc
-              then decIntegerChunks
-                (nAcc * 10 + fromIntegral @Word @Int w)
-                eAcc'
-                acc
-                (advance 1 chunk0)
-              else
-                -- In this case, notice that we deliberately
-                -- unconsume the digit that would have caused
-                -- an overflow.
-                let !r = (acc * fromIntegral @Int @Integer eAcc)
-                       + (fromIntegral @Int @Integer nAcc)
-                 in decIntegerChunks 0 1 r chunk0
-          else
-            let !r = (acc * fromIntegral @Int @Integer eAcc)
-                   + (fromIntegral @Int @Integer nAcc)
-             in (# r, unI (offset chunk0), len# #)
-  else
-    let !r = (acc * fromIntegral @Int @Integer eAcc)
-           + (fromIntegral @Int @Integer nAcc)
-     in (# r, unI (offset chunk0), 0# #)
-  where
-  !len@(I# len# ) = length chunk0
-
-decSmallWordMore ::
-     e -- Error message
-  -> Word -- Accumulator
-  -> Word -- Upper Bound
-  -> Bytes -- Chunk
-  -> Result# e Word#
-decSmallWordMore e !acc !limit !chunk0 = if length chunk0 > 0
-  then
-    let !w = fromIntegral @Word8 @Word
-          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-     in if w < 10
-          then
-            let w' = acc * 10 + w
-             in if w' < limit
-                  then decSmallWordMore e w' limit (advance 1 chunk0)
-                  else (# e | #)
-          else (# | (# unW acc, unI (offset chunk0), unI (length chunk0)  #) #)
-  else (# | (# unW acc, unI (offset chunk0), 0# #) #)
-
-decIntegerMore ::
-     e -- Error message
-  -> Integer -- Accumulator
-  -> Bytes -- Chunk
-  -> Result# e Integer
-decIntegerMore e !acc !chunk0 = if length chunk0 > 0
-  then
-    let w :: Word8
-        !w = (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-     in if w < 10
-          then
-            let w' = acc * 10 + fromIntegral w
-             in decIntegerMore e w' (advance 1 chunk0)
-          else (# | (# acc, unI (offset chunk0), unI (length chunk0) #) #)
-  else (# | (# acc, unI (offset chunk0), 0# #) #)
 
 advance :: Int -> Bytes -> Bytes
 advance n (Bytes arr off len) = Bytes arr (off + n) (len - n)
-
-unW :: Word -> Word#
-unW (W# w) = w
 
 unI :: Int -> Int#
 unI (I# w) = w
@@ -778,57 +315,6 @@ orElse (Parser f) (Parser g) = Parser
       (# | r #) -> (# s1, (# | r #) #)
   )
 
-codepointFromFourBytes :: Word8 -> Word8 -> Word8 -> Word8 -> Char
-codepointFromFourBytes w1 w2 w3 w4 = C#
-  ( chr#
-    ( unI $ fromIntegral
-      ( unsafeShiftL (word8ToWord w1 .&. 0b00001111) 18 .|. 
-        unsafeShiftL (word8ToWord w2 .&. 0b00111111) 12 .|. 
-        unsafeShiftL (word8ToWord w3 .&. 0b00111111) 6 .|. 
-        (word8ToWord w4 .&. 0b00111111)
-      )
-    )
-  )
-
-codepointFromThreeBytes :: Word8 -> Word8 -> Word8 -> Char
-codepointFromThreeBytes w1 w2 w3 = C#
-  ( chr#
-    ( unI $ fromIntegral
-      ( unsafeShiftL (word8ToWord w1 .&. 0b00001111) 12 .|. 
-        unsafeShiftL (word8ToWord w2 .&. 0b00111111) 6 .|. 
-        (word8ToWord w3 .&. 0b00111111)
-      )
-    )
-  )
-
-codepointFromTwoBytes :: Word8 -> Word8 -> Char
-codepointFromTwoBytes w1 w2 = C#
-  ( chr#
-    ( unI $ fromIntegral @Word @Int
-      ( unsafeShiftL (word8ToWord w1 .&. 0b00011111) 6 .|. 
-        (word8ToWord w2 .&. 0b00111111)
-      )
-    )
-  )
-
-oneByteChar :: Word8 -> Bool
-oneByteChar !w = w .&. 0b10000000 == 0
-
-twoByteChar :: Word8 -> Bool
-twoByteChar !w = w .&. 0b11100000 == 0b11000000
-
-threeByteChar :: Word8 -> Bool
-threeByteChar !w = w .&. 0b11110000 == 0b11100000
-
-fourByteChar :: Word8 -> Bool
-fourByteChar !w = w .&. 0b11111000 == 0b11110000
-
-word8ToWord :: Word8 -> Word
-word8ToWord = fromIntegral
-
-followingByte :: Word8 -> Bool
-followingByte !w = xor w 0b01000000 .&. 0b11000000 == 0b11000000
-
 {- $bind
 Sometimes, GHC ends up building join points in a way that
 boxes arguments unnecessarily. In this situation, special variants
@@ -837,9 +323,9 @@ get used in your original source code, GHC will not introduce them.
 -}
 
 -- | Specialization of monadic bind for parsers that return 'Char#'.
-bindChar :: Parser s e Char# -> (Char# -> Parser s e a) -> Parser s e a
-{-# inline bindChar #-}
-bindChar (Parser f) g = Parser
+bindFromCharToLifted :: Parser s e Char# -> (Char# -> Parser s e a) -> Parser s e a
+{-# inline bindFromCharToLifted #-}
+bindFromCharToLifted (Parser f) g = Parser
   (\x@(# arr, _, _ #) s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# e | #) -> (# s1, (# e | #) #)
@@ -847,9 +333,9 @@ bindChar (Parser f) g = Parser
         runParser (g y) (# arr, b, c #) s1
   )
 
-bindCharToIntPair :: Parser s e Char# -> (Char# -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
-{-# inline bindCharToIntPair #-}
-bindCharToIntPair (Parser f) g = Parser
+bindFromCharToIntPair :: Parser s e Char# -> (Char# -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
+{-# inline bindFromCharToIntPair #-}
+bindFromCharToIntPair (Parser f) g = Parser
   (\x@(# arr, _, _ #) s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# e | #) -> (# s1, (# e | #) #)
@@ -857,9 +343,9 @@ bindCharToIntPair (Parser f) g = Parser
         runParser (g y) (# arr, b, c #) s1
   )
 
-bindToIntHash :: Parser s e a -> (a -> Parser s e Int#) -> Parser s e Int#
-{-# inline bindToIntHash #-}
-bindToIntHash (Parser f) g = Parser
+bindFromLiftedToInt :: Parser s e a -> (a -> Parser s e Int#) -> Parser s e Int#
+{-# inline bindFromLiftedToInt #-}
+bindFromLiftedToInt (Parser f) g = Parser
   (\x@(# arr, _, _ #) s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# e | #) -> (# s1, (# e | #) #)
@@ -867,9 +353,9 @@ bindToIntHash (Parser f) g = Parser
         runParser (g y) (# arr, b, c #) s1
   )
 
-bindToIntPair :: Parser s e a -> (a -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
-{-# inline bindToIntPair #-}
-bindToIntPair (Parser f) g = Parser
+bindFromLiftedToIntPair :: Parser s e a -> (a -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
+{-# inline bindFromLiftedToIntPair #-}
+bindFromLiftedToIntPair (Parser f) g = Parser
   (\x@(# arr, _, _ #) s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# e | #) -> (# s1, (# e | #) #)
@@ -877,9 +363,9 @@ bindToIntPair (Parser f) g = Parser
         runParser (g y) (# arr, b, c #) s1
   )
 
-bindIntToIntPair :: Parser s e Int# -> (Int# -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
-{-# inline bindIntToIntPair #-}
-bindIntToIntPair (Parser f) g = Parser
+bindFromIntToIntPair :: Parser s e Int# -> (Int# -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
+{-# inline bindFromIntToIntPair #-}
+bindFromIntToIntPair (Parser f) g = Parser
   (\x@(# arr, _, _ #) s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# e | #) -> (# s1, (# e | #) #)

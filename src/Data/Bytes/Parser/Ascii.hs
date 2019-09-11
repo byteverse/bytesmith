@@ -16,9 +16,10 @@
 {-# language UnboxedSums #-}
 {-# language UnboxedTuples #-}
 
--- | Parse input as ASCII-encoded text. Parsers in
--- this module will fail if they encounter a byte above
--- @0x7F@.
+-- | Parse input as ASCII-encoded text. Some parsers in this module,
+-- like 'any' and 'peek' fail if they encounter a byte above @0x7F@.
+-- Others, like numeric parsers and skipping parsers, leave the cursor
+-- at the position of the offending byte without failing.
 module Data.Bytes.Parser.Ascii
   ( -- * Matching
     Latin.char
@@ -35,6 +36,13 @@ module Data.Bytes.Parser.Ascii
   , Latin.skipDigits1
   , Latin.skipChar
   , Latin.skipChar1
+  , skipAlpha
+  , skipAlpha1
+    -- * Numbers
+  , Latin.decWord
+  , Latin.decWord8
+  , Latin.decWord16
+  , Latin.decWord32
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
@@ -43,7 +51,6 @@ import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (Parser(..),uneffectful,Result#,uneffectful#)
 import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
 import Data.Word (Word8)
-import Data.Char (ord)
 import GHC.Exts (Int(I#),Char(C#),Int#,Char#,(-#),(+#),(<#),ord#,indexCharArray#,chr#)
 
 import qualified Data.Bytes as Bytes

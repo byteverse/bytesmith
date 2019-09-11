@@ -18,6 +18,8 @@ import Test.Tasty.QuickCheck ((===),testProperty)
 
 import qualified Data.Bits as Bits
 import qualified Data.Bytes.Parser as P
+import qualified Data.Bytes.Parser.Ascii as Ascii
+import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.Primitive as PM
 import qualified GHC.Exts as Exts
 import qualified Test.Tasty.HUnit as THU
@@ -29,52 +31,52 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "Parser"
   [ testProperty "decStandardInt" $ \i ->
-      P.parseBytes (P.decStandardInt ()) (bytes (show i)) === P.Success i 0
+      P.parseBytes (Latin.decStandardInt ()) (bytes (show i)) === P.Success i 0
   , testGroup "decUnsignedInt"
     [ testCase "A" $
         P.Failure ()
         @=?
-        P.parseBytes (P.decUnsignedInt ())
+        P.parseBytes (Latin.decUnsignedInt ())
           (bytes "742493495120739103935542")
     , testCase "B" $
         P.Success 4654667 3
         @=?
-        P.parseBytes (P.decUnsignedInt ())
+        P.parseBytes (Latin.decUnsignedInt ())
           (bytes "4654667,55")
     , testProperty "property" $ \(QC.NonNegative i) ->
-        P.parseBytes (P.decUnsignedInt ()) (bytes (show i))
+        P.parseBytes (Latin.decUnsignedInt ()) (bytes (show i))
         ===
         P.Success i 0
     ]
   , testGroup "decPositiveInteger"
     [ testCase "A" $ 
-        P.parseBytes (P.decPositiveInteger ())
+        P.parseBytes (Latin.decUnsignedInteger ())
           (bytes "5469999463123462573426452736423546373235260")
         @=?
         P.Success 5469999463123462573426452736423546373235260 0
     , testProperty "property" $ \(LargeInteger i) ->
         i >= 0
         QC.==>
-        P.parseBytes (P.decPositiveInteger ()) (bytes (show i))
+        P.parseBytes (Latin.decUnsignedInteger ()) (bytes (show i))
         ===
         P.Success i 0
     ]
   , testGroup "decSignedInteger"
     [ testCase "A" $ 
-        P.parseBytes (P.decSignedInteger ())
+        P.parseBytes (Latin.decSignedInteger ())
           (bytes "-54699994631234625734264527364235463732352601")
         @=?
         P.Success (-54699994631234625734264527364235463732352601) 0
     , testProperty "property" $ \(LargeInteger i) ->
-        P.parseBytes (P.decSignedInteger ()) (bytes (show i))
+        P.parseBytes (Latin.decSignedInteger ()) (bytes (show i))
         ===
         P.Success i 0
     ]
   , testProperty "decSignedInt-A" $ \i ->
-      P.parseBytes (P.decSignedInt ()) (bytes (show i)) === P.Success i 0
+      P.parseBytes (Latin.decSignedInt ()) (bytes (show i)) === P.Success i 0
   , testProperty "decSignedInt-B" $ \i ->
       P.parseBytes
-        (P.decSignedInt ())
+        (Latin.decSignedInt ())
         (bytes ((if i >= 0 then "+" else "") ++ show i))
       ===
       P.Success i 0
@@ -83,10 +85,10 @@ tests = testGroup "Parser"
       @=?
       P.parseBytes
         ( pure (,)
-        <*> P.decWord ()
-        <*  P.ascii () '.'
-        <*> P.decWord ()
-        <*  P.ascii () '.'
+        <*> Ascii.decWord ()
+        <*  Ascii.char () '.'
+        <*> Ascii.decWord ()
+        <*  Ascii.char () '.'
         ) (bytes "42.8.")
   ]
 
