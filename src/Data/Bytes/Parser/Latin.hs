@@ -50,10 +50,13 @@ module Data.Bytes.Parser.Latin
   , decTrailingInt
   , decSignedInteger
   , decUnsignedInteger
+    -- ** Hexadecimal
+  , hexWord16
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
 
+import Data.Bits ((.|.))
 import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (Parser(..),ST#,uneffectful,Result#,uneffectful#)
 import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
@@ -64,6 +67,7 @@ import Data.Char (ord)
 import GHC.Exts (Int(I#),Word#,Int#,Char#,(+#),(-#),indexCharArray#)
 import GHC.Word (Word(W#),Word8(W8#),Word16(W16#),Word32(W32#))
 
+import qualified GHC.Exts as Exts
 import qualified Data.Bytes as Bytes
 import qualified Data.Primitive as PM
 
@@ -624,4 +628,50 @@ skipUntilConsumeLoop e !w !c = if length c > 0
     then skipUntilConsumeLoop e w (Bytes.unsafeDrop 1 c)
     else (# | (# (), unI (offset c + 1), unI (length c - 1) #) #)
   else (# e | #)
+
+-- | Parse exactly four ASCII-encoded characters, interpretting
+-- them as the hexadecimal encoding of a 32-bit number. Note that
+-- this rejects a sequence such as @5A9@, requiring @05A9@ instead.
+-- This is insensitive to case.
+hexWord16 :: e -> Parser e s Word16
+{-# inline hexWord16 #-}
+hexWord16 e = Parser
+  (\x s0 -> case runParser (hexWord16# e) x s0 of
+    (# s1, r #) -> case r of
+      (# err | #) -> (# s1, (# err | #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W16# a, b, c #) #) #)
+  )
+
+hexWord16# :: e -> Parser e s Word#
+{-# noinline hexWord16# #-}
+hexWord16# e = uneffectfulWord# $ \chunk -> if length chunk >= 4
+  then
+    let !w0@(W# n0) = oneHex $ PM.indexByteArray (array chunk) (offset chunk)
+        !w1@(W# n1) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 1)
+        !w2@(W# n2) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 2)
+        !w3@(W# n3) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 3)
+     in if | w0 .|. w1 .|. w2 .|. w3 /= maxBound ->
+             (# |
+                (# (n0 `Exts.timesWord#` 4096##) `Exts.plusWord#`
+                   (n1 `Exts.timesWord#` 256##) `Exts.plusWord#`
+                   (n2 `Exts.timesWord#` 16##) `Exts.plusWord#`
+                   n3
+                ,  unI (offset chunk) +# 4#
+                ,  unI (length chunk) -# 4# #) #)
+           | otherwise -> (# e | #)
+  else (# e | #)
+
+
+-- Returns the maximum machine word if the argument is not
+-- the ASCII encoding of a hexadecimal digit.
+oneHex :: Word8 -> Word
+oneHex w
+  | w >= 48 && w < 58 = (fromIntegral w - 48)
+  | w >= 65 && w < 71 = (fromIntegral w - 55)
+  | w >= 97 && w < 103 = (fromIntegral w - 87)
+  | otherwise = maxBound
+
+uneffectfulWord# :: (Bytes -> Result# e Word#) -> Parser e s Word#
+uneffectfulWord# f = Parser
+  ( \b s0 -> (# s0, (f (boxBytes b)) #) )
 

@@ -24,24 +24,33 @@ module Data.Bytes.Parser
   , parseByteArray
   , parseBytes
   , parseBytesST
-    -- * Build Parsers
-  , fail
+    -- * One Byte
   , any
-  , anyUnsafeIso8859_1#
-  , hexWord16
+    -- * Many Bytes
+  , takeWhile
+    -- * Skip
+  , skipWhile
+    -- * End of Input
   , endOfInput
   , isEndOfInput
-  , takeWhile
-  , skipWhile
+    -- * Control Flow
+  , fail
+  , orElse
+    -- * Subparsing
+  , measure
     -- * Lift Effects
   , effect
-    -- * Cut down on boxing
-  , unboxWord32
+    -- * Box Result
   , boxWord32
-  , unboxIntPair
   , boxIntPair
+    -- * Unbox Result
+  , unboxWord32
+  , unboxIntPair
     -- * Specialized Bind
-    -- $bind
+    -- | Sometimes, GHC ends up building join points in a way that
+    -- boxes arguments unnecessarily. In this situation, special variants
+    -- of monadic @>>=@ can be helpful. If @C#@, @I#@, etc. never
+    -- get used in your original source code, GHC will not introduce them.
   , bindFromCharToLifted
   , bindFromLiftedToIntPair
   , bindFromLiftedToInt
@@ -51,8 +60,6 @@ module Data.Bytes.Parser
   , pureIntPair
     -- * Specialized Fail
   , failIntPair
-    -- * Alternative
-  , orElse
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
@@ -110,10 +117,6 @@ parseBytesST (Parser f) !b = ST
     (# s1, r #) -> (# s1, boxPublicResult r #)
   )
 
-uneffectfulWord# :: (Bytes -> Result# e Word#) -> Parser e s Word#
-uneffectfulWord# f = Parser
-  ( \b s0 -> (# s0, (f (boxBytes b)) #) )
-
 -- | Lift an effectful computation into a parser.
 effect :: ST s a -> Parser e s a
 effect (ST f) = Parser
@@ -140,18 +143,6 @@ anyUnsafe = uneffectful $ \chunk ->
   let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
    in InternalSuccess w (offset chunk + 1) (length chunk - 1)
 
--- | Interpret the next byte as a ISO-8859-1-encoded character.
--- Does not check to see if any characters are left. This is
--- profoundly unsafe and can cause a segfault if used at the
--- end of an input byte array. This parser cannot fail.
-anyUnsafeIso8859_1# :: Parser e s Char#
-{-# inline anyUnsafeIso8859_1# #-}
-anyUnsafeIso8859_1# = Parser
-  (\(# arr, off, len #) s0 -> 
-    (# s0, (# | (# indexCharArray# arr off, off +# 1#, len -# 1# #) #) #)
-  )
-
-
 -- | Take while the predicate is matched. This is always inlined.
 takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
 {-# inline takeWhile #-}
@@ -170,48 +161,6 @@ skipWhile f = go where
         then go
         else unconsume 1
 
--- | Parse exactly four ASCII-encoded characters, interpretting
--- them as the hexadecimal encoding of a 32-bit number. Note that
--- this rejects a sequence such as @5A9@, requiring @05A9@ instead.
--- This is insensitive to case.
-hexWord16 :: e -> Parser e s Word16
-{-# inline hexWord16 #-}
-hexWord16 e = Parser
-  (\x s0 -> case runParser (hexWord16# e) x s0 of
-    (# s1, r #) -> case r of
-      (# err | #) -> (# s1, (# err | #) #)
-      (# | (# a, b, c #) #) -> (# s1, (# | (# W16# a, b, c #) #) #)
-  )
-
-hexWord16# :: e -> Parser e s Word#
-{-# noinline hexWord16# #-}
-hexWord16# e = uneffectfulWord# $ \chunk -> if length chunk >= 4
-  then
-    let !w0@(W# n0) = oneHex $ PM.indexByteArray (array chunk) (offset chunk)
-        !w1@(W# n1) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 1)
-        !w2@(W# n2) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 2)
-        !w3@(W# n3) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 3)
-     in if | w0 .|. w1 .|. w2 .|. w3 /= maxBound ->
-             (# |
-                (# (n0 `timesWord#` 4096##) `plusWord#`
-                   (n1 `timesWord#` 256##) `plusWord#`
-                   (n2 `timesWord#` 16##) `plusWord#`
-                   n3
-                ,  unI (offset chunk) +# 4#
-                ,  unI (length chunk) -# 4# #) #)
-           | otherwise -> (# e | #)
-  else (# e | #)
-
-
--- Returns the maximum machine word if the argument is not
--- the ASCII encoding of a hexadecimal digit.
-oneHex :: Word8 -> Word
-oneHex w
-  | w >= 48 && w < 58 = (fromIntegral w - 48)
-  | w >= 65 && w < 71 = (fromIntegral w - 55)
-  | w >= 97 && w < 103 = (fromIntegral w - 87)
-  | otherwise = maxBound
-
 
 -- | Fails if there is still more input remaining.
 endOfInput :: e -> Parser e s ()
@@ -226,9 +175,6 @@ isEndOfInput :: Parser e s Bool
 -- GHC should decide to inline this after optimization.
 isEndOfInput = uneffectful $ \chunk ->
   InternalSuccess (length chunk == 0) (offset chunk) (length chunk)
-
-unI :: Int -> Int#
-unI (I# w) = w
 
 boxPublicResult :: Result# e a -> Result e a
 boxPublicResult (# | (# a, _, c #) #) = Success a (I# c)
@@ -290,10 +236,6 @@ orElse (Parser f) (Parser g) = Parser
   )
 
 {- $bind
-Sometimes, GHC ends up building join points in a way that
-boxes arguments unnecessarily. In this situation, special variants
-of monadic @>>=@ can be helpful. If @C#@, @I#@, etc. never
-get used in your original source code, GHC will not introduce them.
 -}
 
 -- | Specialization of monadic bind for parsers that return 'Char#'.
@@ -358,3 +300,12 @@ failIntPair :: e -> Parser e s (# Int#, Int# #)
 {-# inline failIntPair #-}
 failIntPair e = Parser
   (\(# _, _, _ #) s -> (# s, (# e | #) #))
+
+measure :: Parser e s a -> Parser e s (Int,a)
+{-# inline measure #-}
+measure (Parser f) = Parser
+  (\x@(# _, pre, _ #) s0 -> case f x s0 of
+    (# s1, r #) -> case r of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, post, c #) #) -> (# s1, (# | (# (I# (post -# pre), y),post,c #) #) #)
+  )
