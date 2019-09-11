@@ -34,6 +34,7 @@ module Data.Bytes.Parser.Latin
   , skipDigits1
   , skipChar
   , skipChar1
+  , skipThroughChar
     -- * Numbers
     -- ** Decimal
     -- *** Unsigned
@@ -602,3 +603,25 @@ upcastIntResult (# | (# a, b, c #) #) = (# | (# I# a, b, c #) #)
 
 char2Word :: Char -> Word
 char2Word = fromIntegral . ord
+
+-- | Skip all characters until the character from the is encountered
+-- and then consume the matching character as well. Visually,
+-- @skipThroughChar 'C'@ advances the cursor like this:
+-- 
+-- >  A Z B Y C X D W
+-- > |->->->->-|
+skipThroughChar :: e -> Char -> Parser e s ()
+skipThroughChar e !w = uneffectful# $ \c ->
+  skipUntilConsumeLoop e w c
+
+skipUntilConsumeLoop ::
+     e -- Error message
+  -> Char -- byte to match
+  -> Bytes -- Chunk
+  -> Result# e ()
+skipUntilConsumeLoop e !w !c = if length c > 0
+  then if indexLatinCharArray (array c) (offset c) /= w
+    then skipUntilConsumeLoop e w (Bytes.unsafeDrop 1 c)
+    else (# | (# (), unI (offset c + 1), unI (length c - 1) #) #)
+  else (# e | #)
+

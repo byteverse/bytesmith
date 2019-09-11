@@ -31,7 +31,6 @@ module Data.Bytes.Parser
   , hexWord16
   , endOfInput
   , isEndOfInput
-  , skipUntilAsciiConsume
   , takeWhile
   , skipWhile
     -- * Lift Effects
@@ -110,9 +109,6 @@ parseBytesST (Parser f) !b = ST
   (\s0 -> case f (unboxBytes b) s0 of
     (# s1, r #) -> (# s1, boxPublicResult r #)
   )
-
-c2w :: Char -> Word8
-c2w = fromIntegral . ord
 
 uneffectfulWord# :: (Bytes -> Result# e Word#) -> Parser e s Word#
 uneffectfulWord# f = Parser
@@ -217,24 +213,6 @@ oneHex w
   | otherwise = maxBound
 
 
--- | Skip bytes until the character from the ASCII plane is encountered.
--- This does not ensure that the skipped bytes were ASCII-encoded
--- characters.
-skipUntilAsciiConsume :: e -> Char -> Parser e s ()
-skipUntilAsciiConsume e !w = uneffectful# $ \c ->
-  skipUntilConsumeLoop e (c2w w) c
-
-skipUntilConsumeLoop ::
-     e -- Error message
-  -> Word8 -- byte to match
-  -> Bytes -- Chunk
-  -> Result# e ()
-skipUntilConsumeLoop e !w !c = if length c > 0
-  then if PM.indexByteArray (array c) (offset c) /= w
-    then skipUntilConsumeLoop e w (advance 1 c)
-    else (# | (# (), unI (offset c + 1), unI (length c - 1) #) #)
-  else (# e | #)
-
 -- | Fails if there is still more input remaining.
 endOfInput :: e -> Parser e s ()
 -- GHC should decide to inline this after optimization.
@@ -248,10 +226,6 @@ isEndOfInput :: Parser e s Bool
 -- GHC should decide to inline this after optimization.
 isEndOfInput = uneffectful $ \chunk ->
   InternalSuccess (length chunk == 0) (offset chunk) (length chunk)
-
-
-advance :: Int -> Bytes -> Bytes
-advance n (Bytes arr off len) = Bytes arr (off + n) (len - n)
 
 unI :: Int -> Int#
 unI (I# w) = w
