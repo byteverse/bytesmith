@@ -19,6 +19,12 @@ extra-source-files: CHANGELOG.md
 library
   exposed-modules:
     Data.Bytes.Parser
+    Data.Bytes.Parser.Ascii
+    Data.Bytes.Parser.Latin
+    Data.Bytes.Parser.Unsafe
+    Data.Bytes.Parser.Utf8
+  other-modules:
+    Data.Bytes.Parser.Internal
   build-depends:
     , base >=4.12 && <5
     , byteslice >=0.1.1 && <2
