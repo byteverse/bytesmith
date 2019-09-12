@@ -28,7 +28,7 @@ module Data.Bytes.Parser.Latin
   , char4
     -- ** Try
   , trySatisfy
-  , proceed
+  , trySatisfyThen
     -- * Get Character
   , any
   , opt
@@ -68,7 +68,9 @@ import Data.Bytes.Parser.Internal (boxBytes)
 import Data.Bytes.Parser (bindFromLiftedToInt)
 import Data.Word (Word8)
 import Data.Char (ord)
+import Data.Kind (Type)
 import GHC.Exts (Int(I#),Char(C#),Word#,Int#,Char#,(+#),(-#),indexCharArray#)
+import GHC.Exts (TYPE,RuntimeRep)
 import GHC.Word (Word(W#),Word8(W8#),Word16(W16#),Word32(W32#))
 
 import qualified GHC.Exts as Exts
@@ -86,13 +88,23 @@ trySatisfy f = uneffectful $ \chunk -> case length chunk of
     True -> InternalSuccess True (offset chunk + 1) (length chunk - 1)
     False -> InternalSuccess False (offset chunk) (length chunk)
 
-proceed :: a -> (Char -> Maybe (Parser e s a)) -> Parser e s a
-{-# inline proceed #-}
-proceed a f = Parser
-  (\(# arr,off0,len0 #) s0 -> case len0 of
-    0# -> (# s0, (# | (# a, off0, len0 #) #) #)
+-- | Runs the function on the next character in the input. If the
+-- function returns @Just@, this consumes the character and then
+-- runs the parser on the remaining input. If the function returns
+-- @Nothing@, this does not consume the tested character, and it
+-- runs the default parser on the input (which includes the tested
+-- character). If there is no input remaining, this also runs the
+-- default parser. This combinator never fails.
+trySatisfyThen :: forall (r :: RuntimeRep) (e :: Type) (s :: Type) (a :: TYPE r).
+     Parser e s a -- ^ Default parser. Runs on @Nothing@ or end of input.
+  -> (Char -> Maybe (Parser e s a)) -- ^ Parser-selecting predicate
+  -> Parser e s a
+{-# inline trySatisfyThen #-}
+trySatisfyThen (Parser g) f = Parser
+  (\input@(# arr,off0,len0 #) s0 -> case len0 of
+    0# -> g input s0
     _ -> case f (C# (indexCharArray# arr off0)) of
-      Nothing -> (# s0, (# | (# a, off0, len0 #) #) #)
+      Nothing -> g input s0
       Just (Parser p) -> p (# arr, off0 +# 1#, len0 -# 1# #) s0
   )
 
