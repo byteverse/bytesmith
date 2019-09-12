@@ -56,6 +56,8 @@ module Data.Bytes.Parser
   , bindFromLiftedToInt
   , bindFromIntToIntPair
   , bindFromCharToIntPair
+  , bindFromMaybeCharToIntPair
+  , bindFromMaybeCharToLifted
     -- * Specialized Pure
   , pureIntPair
     -- * Specialized Fail
@@ -235,9 +237,6 @@ orElse (Parser f) (Parser g) = Parser
       (# | r #) -> (# s1, (# | r #) #)
   )
 
-{- $bind
--}
-
 -- | Specialization of monadic bind for parsers that return 'Char#'.
 bindFromCharToLifted :: Parser s e Char# -> (Char# -> Parser s e a) -> Parser s e a
 {-# inline bindFromCharToLifted #-}
@@ -282,6 +281,32 @@ bindFromLiftedToIntPair (Parser f) g = Parser
 bindFromIntToIntPair :: Parser s e Int# -> (Int# -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
 {-# inline bindFromIntToIntPair #-}
 bindFromIntToIntPair (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+bindFromMaybeCharToIntPair ::
+     Parser s e (# (# #) | Char# #)
+  -> ((# (# #) | Char# #) -> Parser s e (# Int#, Int# #))
+  -> Parser s e (# Int#, Int# #)
+{-# inline bindFromMaybeCharToIntPair #-}
+bindFromMaybeCharToIntPair (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+bindFromMaybeCharToLifted ::
+     Parser s e (# (# #) | Char# #)
+  -> ((# (# #) | Char# #) -> Parser s e a)
+  -> Parser s e a
+{-# inline bindFromMaybeCharToLifted #-}
+bindFromMaybeCharToLifted (Parser f) g = Parser
   (\x@(# arr, _, _ #) s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# e | #) -> (# s1, (# e | #) #)

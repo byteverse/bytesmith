@@ -21,10 +21,14 @@
 -- text under ISO 8859-1.
 module Data.Bytes.Parser.Latin
   ( -- * Matching
+    -- ** Required
     char
   , char2
   , char3
   , char4
+    -- ** Try
+  , trySatisfy
+  , proceed
     -- * Get Character
   , any
   , opt
@@ -64,12 +68,33 @@ import Data.Bytes.Parser.Internal (boxBytes)
 import Data.Bytes.Parser (bindFromLiftedToInt)
 import Data.Word (Word8)
 import Data.Char (ord)
-import GHC.Exts (Int(I#),Word#,Int#,Char#,(+#),(-#),indexCharArray#)
+import GHC.Exts (Int(I#),Char(C#),Word#,Int#,Char#,(+#),(-#),indexCharArray#)
 import GHC.Word (Word(W#),Word8(W8#),Word16(W16#),Word32(W32#))
 
 import qualified GHC.Exts as Exts
 import qualified Data.Bytes as Bytes
 import qualified Data.Primitive as PM
+
+-- | Runs the predicate on the next character in the input. If the
+-- predicate is matched, this consumes the character. Otherwise,
+-- the character is not consumed. This returns @False@ if the end
+-- of the input has been reached. This never fails.
+trySatisfy :: (Char -> Bool) -> Parser e s Bool
+trySatisfy f = uneffectful $ \chunk -> case length chunk of
+  0 -> InternalSuccess False (offset chunk) (length chunk)
+  _ -> case f (indexLatinCharArray (array chunk) (offset chunk)) of
+    True -> InternalSuccess True (offset chunk + 1) (length chunk - 1)
+    False -> InternalSuccess False (offset chunk) (length chunk)
+
+proceed :: a -> (Char -> Maybe (Parser e s a)) -> Parser e s a
+{-# inline proceed #-}
+proceed a f = Parser
+  (\(# arr,off0,len0 #) s0 -> case len0 of
+    0# -> (# s0, (# | (# a, off0, len0 #) #) #)
+    _ -> case f (C# (indexCharArray# arr off0)) of
+      Nothing -> (# s0, (# | (# a, off0, len0 #) #) #)
+      Just (Parser p) -> p (# arr, off0 +# 1#, len0 -# 1# #) s0
+  )
 
 -- | Consume the next character, failing if it does not
 -- match the expected value or if there is no more input.
