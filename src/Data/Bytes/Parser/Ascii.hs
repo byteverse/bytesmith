@@ -31,6 +31,8 @@ module Data.Bytes.Parser.Ascii
   , any#
   , peek
   , opt
+    -- * Match Many
+  , shortTrailedBy
     -- * Skip
   , Latin.skipDigits
   , Latin.skipDigits1
@@ -38,6 +40,7 @@ module Data.Bytes.Parser.Ascii
   , Latin.skipChar1
   , skipAlpha
   , skipAlpha1
+  , skipTrailedBy
     -- * Numbers
   , Latin.decWord
   , Latin.decWord8
@@ -51,11 +54,45 @@ import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (Parser(..),uneffectful,Result#,uneffectful#)
 import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
 import Data.Word (Word8)
+import Data.Text.Short (ShortText)
+import Control.Monad.ST.Run (runByteArrayST)
 import GHC.Exts (Int(I#),Char(C#),Int#,Char#,(-#),(+#),(<#),ord#,indexCharArray#,chr#)
 
+import qualified Data.ByteString.Short.Internal as BSS
+import qualified Data.Text.Short.Unsafe as TS
 import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Parser.Latin as Latin
+import qualified Data.Bytes.Parser.Unsafe as Unsafe
 import qualified Data.Primitive as PM
+
+-- | Consume input until the trailer is found. Then, consume
+-- the trailer as well. This fails if the trailer is not
+-- found or if any non-ASCII characters are encountered.
+skipTrailedBy :: e -> Char -> Parser e s ()
+skipTrailedBy e !c = do
+  let go = do
+        !d <- any e
+        if d == c
+          then pure ()
+          else go
+  go
+
+shortTrailedBy :: e -> Char -> Parser e s ShortText
+shortTrailedBy e !c = do
+  !start <- Unsafe.cursor
+  skipTrailedBy e c
+  end <- Unsafe.cursor
+  src <- Unsafe.expose
+  let len = end - start - 1
+      !r = runByteArrayST $ do
+        marr <- PM.newByteArray len
+        PM.copyByteArray marr 0 src start len
+        PM.unsafeFreezeByteArray marr
+  pure
+    $ TS.fromShortByteStringUnsafe
+    $ byteArrayToShortByteString
+    $ r
+
 
 -- | Consumes and returns the next character in the input.
 any :: e -> Parser e s Char
@@ -148,4 +185,7 @@ skipAlphaAsciiLoop1Start e !c = if length c > 0
           then upcastUnitSuccess (skipAlphaAsciiLoop (Bytes.unsafeDrop 1 c))
           else (# e | #)
   else (# e | #)
+
+byteArrayToShortByteString :: PM.ByteArray -> BSS.ShortByteString
+byteArrayToShortByteString (PM.ByteArray x) = BSS.SBS x
 

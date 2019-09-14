@@ -30,9 +30,13 @@ module Data.Bytes.Parser
   , takeWhile
     -- * Skip
   , skipWhile
+    -- * Match
+  , byteArray
+  , bytes
     -- * End of Input
   , endOfInput
   , isEndOfInput
+  , remaining
     -- * Control Flow
   , fail
   , orElse
@@ -126,6 +130,19 @@ effect (ST f) = Parser
     (# s1, a #) -> (# s1, (# | (# a, off, len #) #) #)
   )
 
+byteArray :: e -> ByteArray -> Parser e s ()
+byteArray e !expected = bytes e (B.fromByteArray expected)
+
+bytes :: e -> Bytes -> Parser e s ()
+bytes e !expected = Parser
+  ( \actual@(# _, off, len #) s ->
+    let r = if B.isPrefixOf expected (boxBytes actual)
+          then let !(I# movement) = length expected in
+            (# | (# (), off +# movement, len -# movement #) #)
+          else (# e | #)
+     in (# s, r #)
+  )
+
 -- | Consumes and returns the next byte in the input.
 -- Fails if no characters are left.
 any :: e -> Parser e s Word8
@@ -149,7 +166,12 @@ anyUnsafe = uneffectful $ \chunk ->
 takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
 {-# inline takeWhile #-}
 takeWhile f = uneffectful $ \chunk -> case B.takeWhile f chunk of
-  bytes -> InternalSuccess bytes (offset chunk + length bytes) (length chunk - length bytes)
+  bs -> InternalSuccess bs (offset chunk + length bs) (length chunk - length bs)
+
+remaining :: Parser e s Bytes
+{-# inline remaining #-}
+remaining = uneffectful $ \chunk ->
+  InternalSuccess chunk (offset chunk + length chunk) 0
 
 -- | Skip while the predicate is matched. This is always inlined.
 skipWhile :: (Word8 -> Bool) -> Parser e s ()

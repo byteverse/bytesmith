@@ -38,7 +38,7 @@ module Data.Bytes.Parser.Latin
   , skipDigits1
   , skipChar
   , skipChar1
-  , skipThroughChar
+  , skipTrailedBy
     -- * Numbers
     -- ** Decimal
     -- *** Unsigned
@@ -647,12 +647,12 @@ char2Word = fromIntegral . ord
 
 -- | Skip all characters until the character from the is encountered
 -- and then consume the matching character as well. Visually,
--- @skipThroughChar 'C'@ advances the cursor like this:
+-- @skipTrailedBy \'C\'@ advances the cursor like this:
 -- 
--- >  A Z B Y C X D W
+-- >  A Z B Y C X C W
 -- > |->->->->-|
-skipThroughChar :: e -> Char -> Parser e s ()
-skipThroughChar e !w = uneffectful# $ \c ->
+skipTrailedBy :: e -> Char -> Parser e s ()
+skipTrailedBy e !w = uneffectful# $ \c ->
   skipUntilConsumeLoop e w c
 
 skipUntilConsumeLoop ::

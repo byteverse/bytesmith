@@ -21,6 +21,7 @@
 module Data.Bytes.Parser.Utf8
   ( -- * Get Character
     any#
+  , shortText
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
@@ -31,10 +32,14 @@ import Data.Bytes.Parser.Internal (Parser(..),uneffectful,Result#,uneffectful#)
 import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
 import GHC.Exts (Int(I#),Char(C#),Int#,Char#,(-#),(+#),(<#),(>#),ord#,indexCharArray#,chr#)
 import GHC.Word (Word8(W8#))
+import Data.Text.Short (ShortText)
 
+import qualified Data.ByteString.Short.Internal as BSS
 import qualified Data.Bytes as Bytes
+import qualified Data.Bytes.Parser as Parser
 import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.Primitive as PM
+import qualified Data.Text.Short as TS
 import qualified GHC.Exts as Exts
 
 -- | Interpret the next one to four bytes as a UTF-8-encoded character.
@@ -130,3 +135,11 @@ word8ToWord = fromIntegral
 unI :: Int -> Int#
 unI (I# w) = w
 
+shortText :: e -> ShortText -> Parser e s ()
+shortText e !t = Parser.byteArray e
+  (shortByteStringToByteArray (TS.toShortByteString t))
+
+shortByteStringToByteArray ::
+     BSS.ShortByteString
+  -> PM.ByteArray
+shortByteStringToByteArray (BSS.SBS x) = PM.ByteArray x
