@@ -77,6 +77,10 @@ skipTrailedBy e !c = do
           else go
   go
 
+-- | Consume input through the next occurrence of the target
+-- character and return the consumed input, excluding the
+-- target character, as a 'ShortText'. This fails if it
+-- encounters any bytes above @0x7F@.
 shortTrailedBy :: e -> Char -> Parser e s ShortText
 shortTrailedBy e !c = do
   !start <- Unsafe.cursor

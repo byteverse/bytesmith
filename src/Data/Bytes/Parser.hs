@@ -168,6 +168,7 @@ takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
 takeWhile f = uneffectful $ \chunk -> case B.takeWhile f chunk of
   bs -> InternalSuccess bs (offset chunk + length bs) (length chunk - length bs)
 
+-- | Consume all remaining bytes in the input.
 remaining :: Parser e s Bytes
 {-# inline remaining #-}
 remaining = uneffectful $ \chunk ->
@@ -259,7 +260,6 @@ orElse (Parser f) (Parser g) = Parser
       (# | r #) -> (# s1, (# | r #) #)
   )
 
--- | Specialization of monadic bind for parsers that return 'Char#'.
 bindFromCharToLifted :: Parser s e Char# -> (Char# -> Parser s e a) -> Parser s e a
 {-# inline bindFromCharToLifted #-}
 bindFromCharToLifted (Parser f) g = Parser
@@ -348,6 +348,8 @@ failIntPair :: e -> Parser e s (# Int#, Int# #)
 failIntPair e = Parser
   (\(# _, _, _ #) s -> (# s, (# e | #) #))
 
+-- | Augment a parser with the number of bytes that were consume while
+-- it executed.
 measure :: Parser e s a -> Parser e s (Int,a)
 {-# inline measure #-}
 measure (Parser f) = Parser

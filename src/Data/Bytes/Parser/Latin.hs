@@ -52,8 +52,10 @@ module Data.Bytes.Parser.Latin
   , decSignedInt
   , decStandardInt
   , decTrailingInt
+  , decTrailingInt#
   , decSignedInteger
   , decUnsignedInteger
+  , decTrailingInteger
     -- ** Hexadecimal
   , hexWord16
   ) where
@@ -409,26 +411,25 @@ decSignedInt e = Parser
   )
 
 -- | Variant of 'decUnsignedInt' that lets the caller supply a leading
--- digit. This is useful when parsing a language where integers with
--- leading zeroes are considered invalid. The caller must consume the
--- plus or minus sign (if either of those are allowed) and the first
--- digit before calling this parser.
+-- digit. This is useful when parsing formats like JSON where integers with
+-- leading zeroes are considered invalid. The calling context must
+-- consume the first digit before calling this parser. Results are
+-- always positive numbers.
 decTrailingInt ::
      e -- ^ Error message
-  -> Int -- ^ Leading digit, should be between @-9@ and @9@.
+  -> Int -- ^ Leading digit, should be between @0@ and @9@.
   -> Parser e s Int
-decTrailingInt e !w = Parser
+decTrailingInt e (I# w) = Parser
   (\chunk0 s0 -> case runParser (decTrailingInt# e w) chunk0 s0 of
     (# s1, r #) -> (# s1, upcastIntResult r #)
   )
 
 decTrailingInt# ::
      e -- Error message
-  -> Int -- Leading digit, should be between @-9@ and @9@.
+  -> Int# -- Leading digit, should be between @0@ and @9@.
   -> Parser e s Int#
-decTrailingInt# e !w = if w >= 0
-  then Parser (\chunk0 s0 -> (# s0, decPosIntMore e w (boxBytes chunk0) #))
-  else Parser (\chunk0 s0 -> (# s0, decNegIntMore e w (boxBytes chunk0) #))
+decTrailingInt# e !w =
+  Parser (\chunk0 s0 -> (# s0, decPosIntMore e (I# w) (boxBytes chunk0) #))
 
 -- | Parse a decimal-encoded number. If the number is too large to be
 -- represented by a machine integer, this fails with the provided
@@ -473,18 +474,27 @@ decStandardInt# e = any e `bindFromLiftedToInt` \c -> case c of
              else (# s0, (# e | #) #)
     )
 
+-- | Variant of 'decUnsignedInteger' that lets the caller supply a leading
+-- digit. This is useful when parsing formats like JSON where integers with
+-- leading zeroes are considered invalid. The calling context must
+-- consume the first digit before calling this parser. Results are
+-- always positive numbers.
+decTrailingInteger ::
+     Int -- ^ Leading digit, should be between @0@ and @9@.
+  -> Parser e s Integer
+decTrailingInteger (I# w) =
+  Parser (\chunk0 s0 -> (# s0, (# | decIntegerChunks (I# w) 10 0 (boxBytes chunk0) #) #))
+
 -- | Parse a decimal-encoded positive integer of arbitrary
--- size. Note: this is not implemented efficiently. This
--- pulls in one digit at a time, multiplying the accumulator
--- by ten each time and adding the new digit. Since
--- arithmetic involving arbitrary-precision integers is
--- somewhat expensive, it would be better to pull in several
--- digits at a time, convert those to a machine-sized integer,
--- then upcast and perform the multiplication and addition.
+-- size. This rejects input that begins with a plus or minus
+-- sign.
 decUnsignedInteger :: e -> Parser e s Integer
 decUnsignedInteger e = Parser
   (\chunk0 s0 -> decUnsignedIntegerStart e (boxBytes chunk0) s0)
 
+-- | Parse a decimal-encoded integer of arbitrary size.
+-- This accepts input that begins with a plus or minus sign.
+-- Input without a sign prefix is interpreted as positive.
 decSignedInteger :: e -> Parser e s Integer
 {-# noinline decSignedInteger #-}
 decSignedInteger e = any e >>= \c -> case c of
@@ -669,7 +679,9 @@ skipUntilConsumeLoop e !w !c = if length c > 0
 -- | Parse exactly four ASCII-encoded characters, interpretting
 -- them as the hexadecimal encoding of a 32-bit number. Note that
 -- this rejects a sequence such as @5A9@, requiring @05A9@ instead.
--- This is insensitive to case.
+-- This is insensitive to case. This is particularly useful when
+-- parsing escape sequences in C or JSON, which allow encoding
+-- characters in the Basic Multilingual Plane as @\\uhhhh@.
 hexWord16 :: e -> Parser e s Word16
 {-# inline hexWord16 #-}
 hexWord16 e = Parser
