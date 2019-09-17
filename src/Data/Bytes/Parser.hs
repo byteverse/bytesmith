@@ -69,7 +69,7 @@ module Data.Bytes.Parser
   , failIntPair
   ) where
 
-import Prelude hiding (length,any,fail,takeWhile)
+import Prelude hiding (length,any,fail,takeWhile,take)
 
 import Control.Applicative (Alternative)
 import Data.Char (ord)
