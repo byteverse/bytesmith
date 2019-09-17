@@ -16,9 +16,7 @@
 {-# language UnboxedSums #-}
 {-# language UnboxedTuples #-}
 
--- | Parse numbers encoded though it were text encoded by
--- ISO 8859-1 (Latin-1). All byte sequences are valid
--- text under ISO 8859-1.
+-- | Big-endian fixed-width numbers.
 module Data.Bytes.Parser.BigEndian
   ( -- * Unsigned
     word8
@@ -44,9 +42,11 @@ import Data.Int (Int8,Int16,Int32,Int64)
 import qualified Data.Bytes.Parser as P
 import qualified Data.Primitive as PM
 
+-- | Unsigned 8-bit word.
 word8 :: e -> Parser e s Word8
 word8 = P.any
 
+-- | Unsigned 16-bit word.
 word16 :: e -> Parser e s Word16
 word16 e = uneffectful $ \chunk -> if length chunk >= 2
   then
@@ -57,6 +57,7 @@ word16 e = uneffectful $ \chunk -> if length chunk >= 2
           (offset chunk + 2) (length chunk - 2)
   else InternalFailure e
 
+-- | Unsigned 32-bit word.
 word32 :: e -> Parser e s Word32
 word32 e = uneffectful $ \chunk -> if length chunk >= 4
   then
@@ -75,6 +76,7 @@ word32 e = uneffectful $ \chunk -> if length chunk >= 4
           (offset chunk + 4) (length chunk - 4)
   else InternalFailure e
 
+-- | Unsigned 64-bit word.
 word64 :: e -> Parser e s Word64
 word64 e = uneffectful $ \chunk -> if length chunk >= 8
   then
@@ -99,14 +101,18 @@ word64 e = uneffectful $ \chunk -> if length chunk >= 8
           (offset chunk + 8) (length chunk - 8)
   else InternalFailure e
 
+-- | Signed 8-bit integer.
 int8 :: e -> Parser e s Int8
 int8 = fmap fromIntegral . word8
 
+-- | Signed 16-bit integer.
 int16 :: e -> Parser e s Int16
 int16 = fmap fromIntegral . word16
 
+-- | Signed 32-bit integer.
 int32 :: e -> Parser e s Int32
 int32 = fmap fromIntegral . word32
 
+-- | Signed 64-bit integer.
 int64 :: e -> Parser e s Int64
 int64 = fmap fromIntegral . word64
