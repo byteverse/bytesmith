@@ -2,6 +2,7 @@
 
 ## 0.2.0.0 -- 2019-09-15
 
+* Add big-endian word parsers.
 * Redo module structure so that encoding-specific functions each
   live in their own module.
 * Add a lot more functions and attempt to make naming somewhat
