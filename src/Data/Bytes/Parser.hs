@@ -27,6 +27,7 @@ module Data.Bytes.Parser
     -- * One Byte
   , any
     -- * Many Bytes
+  , take
   , takeWhile
     -- * Skip
   , skipWhile
@@ -167,6 +168,15 @@ takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
 {-# inline takeWhile #-}
 takeWhile f = uneffectful $ \chunk -> case B.takeWhile f chunk of
   bs -> InternalSuccess bs (offset chunk + length bs) (length chunk - length bs)
+
+-- | Take the given number of bytes. Fails if there is not enough¬
+--   remaining input.¬
+take :: e -> Int -> Parser e s Bytes
+{-# inline take #-}
+take e n = uneffectful $ \chunk -> if n <= B.length chunk
+  then case B.unsafeTake n chunk of
+    bs -> InternalSuccess bs (offset chunk + n) (length chunk - n)
+  else InternalFailure e
 
 -- | Consume all remaining bytes in the input.
 remaining :: Parser e s Bytes
