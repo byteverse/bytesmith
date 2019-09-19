@@ -44,6 +44,7 @@ module Data.Bytes.Parser
   , annotate
   , (<?>)
     -- * Subparsing
+  , delimit
   , measure
     -- * Lift Effects
   , effect
@@ -80,7 +81,7 @@ import Data.Kind (Type)
 import GHC.ST (ST(..),runST)
 import GHC.Exts (Word(W#),Word#,TYPE,State#,Int#,ByteArray#)
 import GHC.Exts (Int(I#),Char(C#),chr#,RuntimeRep)
-import GHC.Exts (Char#,(+#),(-#),(<#),(>#),word2Int#)
+import GHC.Exts (Char#,(+#),(-#),(<#),(>#),(>=#),word2Int#)
 import GHC.Exts (indexCharArray#,indexWord8Array#,ord#)
 import GHC.Exts (timesWord#,plusWord#)
 import Data.Bytes.Types (Bytes(..))
@@ -380,4 +381,32 @@ measure (Parser f) = Parser
     (# s1, r #) -> case r of
       (# e | #) -> (# s1, (# e | #) #)
       (# | (# y, post, c #) #) -> (# s1, (# | (# (I# (post -# pre), y),post,c #) #) #)
+  )
+
+-- | Run a parser in a delimited context, failing if the requested number
+-- of bytes are not available or if the delimited parser does not
+-- consume all input. This combinator can be understood as a composition
+-- of 'take', 'effect', 'parseBytesST', and 'endOfInput'. It is provided as
+-- a single combinator because for convenience and because it is easy
+-- make mistakes when manually assembling the aforementioned parsers.
+-- The pattern of prefixing an encoding with its length is common.
+-- This is discussed more in
+-- <https://github.com/bos/attoparsec/issues/129 attoparsec issue #129>.
+--
+-- > delimit e1 e2 n remaining === take e1 n
+delimit ::
+     e -- ^ Error message when not enough bytes are present
+  -> e -- ^ Error message when delimited parser does not consume all input
+  -> Int -- ^ Exact number of bytes delimited parser is expected to consume
+  -> Parser e s a -- ^ Parser to execute in delimited context
+  -> Parser e s a
+delimit esz eleftovers (I# n) (Parser f) = Parser
+  ( \(# arr, off, len #) s0 -> case len >=# n of
+    1# -> case f (# arr, off, n #) s0 of
+      (# s1, r #) -> case r of
+        (# e | #) -> (# s1, (# e | #) #)
+        (# | (# a, newOff, leftovers #) #) -> case leftovers of
+          0# -> (# s1, (# | (# a, newOff, len -# n #) #) #)
+          _ -> (# s1, (# eleftovers | #) #)
+    _ -> (# s0, (# esz | #) #)
   )

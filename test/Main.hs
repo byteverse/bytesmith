@@ -32,6 +32,19 @@ tests :: TestTree
 tests = testGroup "Parser"
   [ testProperty "decStandardInt" $ \i ->
       P.parseBytes (Latin.decStandardInt ()) (bytes (show i)) === P.Success i 0
+  , testCase "delimit" $
+      P.Success (167,14625) 0
+      @=?
+      P.parseBytes
+        (do len <- Latin.decUnsignedInt ()
+            Latin.char () ','
+            r <- P.delimit () () len $ (,)
+              <$> Latin.decUnsignedInt ()
+              <*  Latin.char () '*'
+              <*> Latin.decUnsignedInt ()
+            Latin.char () '0'
+            pure r
+        ) (bytes "9,167*146250")
   , testGroup "decUnsignedInt"
     [ testCase "A" $
         P.Failure ()
