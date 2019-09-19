@@ -149,12 +149,12 @@ bytes e !expected = Parser
 infix 0 <?>
 
 -- | Infix version of 'annotate'.
-(<?>) :: Parser e s a -> e -> Parser e s a
+(<?>) :: Parser x s a -> e -> Parser e s a
 (<?>) = annotate
 
 -- | Annotate a parser. If the parser fails, the error will
 --   be returned.
-annotate :: Parser e s a -> e -> Parser e s a
+annotate :: Parser x s a -> e -> Parser e s a
 annotate p e = p `orElse` fail e
 
 -- | Consumes and returns the next byte in the input.
