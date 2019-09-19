@@ -41,6 +41,8 @@ module Data.Bytes.Parser
     -- * Control Flow
   , fail
   , orElse
+  , annotate
+  , (<?>)
     -- * Subparsing
   , measure
     -- * Lift Effects
@@ -143,6 +145,17 @@ bytes e !expected = Parser
           else (# e | #)
      in (# s, r #)
   )
+
+infix 0 <?>
+
+-- | Infix version of 'annotate'.
+(<?>) :: Parser e s a -> e -> Parser e s a
+(<?>) = annotate
+
+-- | Annotate a parser. If the parser fails, the error will
+--   be returned.
+annotate :: Parser e s a -> e -> Parser e s a
+annotate p e = p `orElse` fail e
 
 -- | Consumes and returns the next byte in the input.
 -- Fails if no characters are left.
