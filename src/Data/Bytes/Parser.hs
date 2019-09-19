@@ -169,8 +169,8 @@ takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
 takeWhile f = uneffectful $ \chunk -> case B.takeWhile f chunk of
   bs -> InternalSuccess bs (offset chunk + length bs) (length chunk - length bs)
 
--- | Take the given number of bytes. Fails if there is not enough¬
---   remaining input.¬
+-- | Take the given number of bytes. Fails if there is not enough
+--   remaining input.
 take :: e -> Int -> Parser e s Bytes
 {-# inline take #-}
 take e n = uneffectful $ \chunk -> if n <= B.length chunk
