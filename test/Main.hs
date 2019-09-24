@@ -74,6 +74,14 @@ tests = testGroup "Parser"
         ===
         P.Success i 0
     ]
+  , testGroup "decTrailingInteger"
+    [ testProperty "property" $ \(LargeInteger i) ->
+        i >= 0
+        QC.==>
+        P.parseBytes (Latin.decTrailingInteger 2) (bytes (show i))
+        ===
+        (P.Success (read ('2' : show i) :: Integer) 0 :: P.Result () Integer)
+    ]
   , testGroup "decSignedInteger"
     [ testCase "A" $ 
         P.parseBytes (Latin.decSignedInteger ())
@@ -155,8 +163,8 @@ newtype LargeInteger = LargeInteger Integer
   deriving (Eq,Show)
 
 instance QC.Arbitrary LargeInteger where
-  arbitrary = QC.sized $ \sz -> do
-      n <- QC.choose (1, sz)
+  arbitrary = do
+      n <- QC.choose (1, 19)
       sign <- QC.arbitrary
       r <- (if sign then negate else id) . foldr f 0
         <$> replicateM n QC.arbitrary
