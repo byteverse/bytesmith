@@ -47,6 +47,8 @@ module Data.Bytes.Parser
   , orElse
   , annotate
   , (<?>)
+    -- * Repetition
+  , replicate
     -- * Subparsing
   , delimit
   , measure
@@ -76,7 +78,7 @@ module Data.Bytes.Parser
   , failIntPair
   ) where
 
-import Prelude hiding (length,any,fail,takeWhile,take)
+import Prelude hiding (length,any,fail,takeWhile,take,replicate)
 
 import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes,boxBytes,Result#,uneffectful,fail)
 import Data.Bytes.Parser.Unsafe (unconsume)
@@ -85,9 +87,11 @@ import Data.Primitive (ByteArray(..))
 import GHC.Exts (Int(I#),Word#,Int#,Char#,(+#),(-#),(>=#))
 import GHC.ST (ST(..),runST)
 import GHC.Word (Word32(W32#),Word8)
+import Data.Primitive.Contiguous (Contiguous,Element)
 
 import qualified Data.Bytes as B
 import qualified Data.Primitive as PM
+import qualified Data.Primitive.Contiguous as C
 
 -- | The result of running a parser.
 data Result e a
@@ -406,3 +410,22 @@ delimit esz eleftovers (I# n) (Parser f) = Parser
           _ -> (# s1, (# eleftovers | #) #)
     _ -> (# s0, (# esz | #) #)
   )
+
+-- | Replicate a parser n times, allocating the result into
+--   an array of length n.
+replicate :: forall arr e s a. (Contiguous arr, Element arr a)
+  => Int -- ^ Length
+  -> Parser e s a -- ^ Parser
+  -> Parser e s (arr a)
+replicate len p = do
+  marr <- effect (C.new len)
+  let go :: Int -> Parser e s (arr a)
+      go !ix = if ix < len
+        then do
+          a <- p
+          effect (C.write marr ix a)
+          go (ix + 1)
+        else do
+          effect (C.unsafeFreeze marr)
+  go 0
+{-# inline replicate #-}
