@@ -1,6 +1,6 @@
 # Revision history for bytesmith
 
-## 0.2.0.0 -- 2019-09-15
+## 0.2.0.0 -- 2019-09-24
 
 * Add big-endian word parsers.
 * Redo module structure so that encoding-specific functions each

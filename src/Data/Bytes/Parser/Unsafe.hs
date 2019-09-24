@@ -29,7 +29,7 @@ import Prelude hiding (length)
 
 import Data.Primitive (ByteArray)
 import Data.Bytes.Types (Bytes(..))
-import Data.Bytes.Parser.Internal (Parser(..),uneffectful,Result#,uneffectful#)
+import Data.Bytes.Parser.Internal (Parser(..),uneffectful)
 import Data.Bytes.Parser.Internal (InternalResult(..))
 
 -- | Get the current offset into the chunk. Using this makes

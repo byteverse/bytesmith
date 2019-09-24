@@ -17,7 +17,7 @@
 {-# language UnboxedTuples #-}
 
 -- | Parse input as ASCII-encoded text. Some parsers in this module,
--- like 'any' and 'peek' fail if they encounter a byte above @0x7F@.
+-- like 'any' and 'peek', fail if they encounter a byte above @0x7F@.
 -- Others, like numeric parsers and skipping parsers, leave the cursor
 -- at the position of the offending byte without failing.
 module Data.Bytes.Parser.Ascii

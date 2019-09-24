@@ -27,17 +27,13 @@ module Data.Bytes.Parser.Utf8
 import Prelude hiding (length,any,fail,takeWhile)
 
 import Data.Bits ((.&.),(.|.),unsafeShiftL,xor)
-import Data.Bytes.Types (Bytes(..))
-import Data.Bytes.Parser.Internal (Parser(..),uneffectful,Result#,uneffectful#)
-import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
-import GHC.Exts (Int(I#),Char(C#),Int#,Char#,(-#),(+#),(<#),(>#),ord#,indexCharArray#,chr#)
-import GHC.Word (Word8(W8#))
+import Data.Bytes.Parser.Internal (Parser(..))
 import Data.Text.Short (ShortText)
+import GHC.Exts (Int(I#),Char(C#),Int#,Char#,(-#),(+#),(>#),chr#)
+import GHC.Word (Word8(W8#))
 
 import qualified Data.ByteString.Short.Internal as BSS
-import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Parser as Parser
-import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.Primitive as PM
 import qualified Data.Text.Short as TS
 import qualified GHC.Exts as Exts
@@ -135,6 +131,8 @@ word8ToWord = fromIntegral
 unI :: Int -> Int#
 unI (I# w) = w
 
+-- | Consume input that matches the argument. Fails if the
+-- input does not match.
 shortText :: e -> ShortText -> Parser e s ()
 shortText e !t = Parser.byteArray e
   (shortByteStringToByteArray (TS.toShortByteString t))

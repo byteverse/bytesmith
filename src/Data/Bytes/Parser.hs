@@ -16,6 +16,10 @@
 {-# language UnboxedSums #-}
 {-# language UnboxedTuples #-}
 
+-- | Parse non-resumable sequence of bytes. To parse a byte sequence
+-- as text, use the @Ascii@, @Latin@, and @Utf8@ modules instead.
+-- Functions for parsing decimal-encoded numbers are found in those
+-- modules.
 module Data.Bytes.Parser
   ( -- * Types
     Parser(..)
@@ -74,21 +78,13 @@ module Data.Bytes.Parser
 
 import Prelude hiding (length,any,fail,takeWhile,take)
 
-import Control.Applicative (Alternative)
-import Data.Char (ord)
-import Data.Bits ((.&.),(.|.),unsafeShiftL,xor)
-import Data.Kind (Type)
-import GHC.ST (ST(..),runST)
-import GHC.Exts (Word(W#),Word#,TYPE,State#,Int#,ByteArray#)
-import GHC.Exts (Int(I#),Char(C#),chr#,RuntimeRep)
-import GHC.Exts (Char#,(+#),(-#),(<#),(>#),(>=#),word2Int#)
-import GHC.Exts (indexCharArray#,indexWord8Array#,ord#)
-import GHC.Exts (timesWord#,plusWord#)
+import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes,boxBytes,Result#,uneffectful,fail)
+import Data.Bytes.Parser.Unsafe (unconsume)
 import Data.Bytes.Types (Bytes(..))
 import Data.Primitive (ByteArray(..))
-import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes,boxBytes,Result#,Bytes#,ST#,uneffectful,uneffectful#,fail,upcastUnitSuccess)
-import Data.Bytes.Parser.Unsafe (unconsume)
-import GHC.Word (Word32(W32#),Word16(W16#),Word8(W8#))
+import GHC.Exts (Int(I#),Word#,Int#,Char#,(+#),(-#),(>=#))
+import GHC.ST (ST(..),runST)
+import GHC.Word (Word32(W32#),Word8)
 
 import qualified Data.Bytes as B
 import qualified Data.Primitive as PM
