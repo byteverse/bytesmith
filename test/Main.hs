@@ -7,7 +7,7 @@
 
 import Control.Monad (replicateM)
 import Control.Monad.ST (runST)
-import Data.Primitive (ByteArray)
+import Data.Primitive (ByteArray,PrimArray)
 import Data.Word (Word8,Word64)
 import Data.Char (ord)
 import Data.Bytes.Types (Bytes(Bytes))
@@ -103,6 +103,12 @@ tests = testGroup "Parser"
         <*> Ascii.decWord ()
         <*  Ascii.char () '.'
         ) (bytes "42.8.")
+  , testCase "decWord-replicate" $
+      P.Success (Exts.fromList [42,93] :: PrimArray Word) 0
+      @=?
+      P.parseBytes
+        (P.replicate 2 (Ascii.decWord () <* Ascii.char () '.'))
+        (bytes "42.93.")
   ]
 
 bytes :: String -> Bytes

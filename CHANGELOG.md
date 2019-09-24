@@ -8,6 +8,7 @@
 * Add a lot more functions and attempt to make naming somewhat
   consistent.
 * Add `delimit`.
+* Add `replicate`.
 * Add `annotate` and its infix synonym `<?>`.
 
 ## 0.1.0.0 -- 2019-08-22

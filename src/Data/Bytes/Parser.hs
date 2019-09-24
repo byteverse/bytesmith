@@ -411,13 +411,16 @@ delimit esz eleftovers (I# n) (Parser f) = Parser
     _ -> (# s0, (# esz | #) #)
   )
 
--- | Replicate a parser n times, allocating the result into
---   an array of length n.
+-- | Replicate a parser @n@ times, writing the results into
+-- an array of length @n@. For @Array@ and @SmallArray@, this
+-- is lazy in the elements, so be sure the they result of the
+-- parser is evaluated appropriately to avoid unwanted thunks.
 replicate :: forall arr e s a. (Contiguous arr, Element arr a)
-  => Int -- ^ Length
+  => Int -- ^ Number of times to run the parser
   -> Parser e s a -- ^ Parser
   -> Parser e s (arr a)
-replicate len p = do
+{-# inline replicate #-}
+replicate !len p = do
   marr <- effect (C.new len)
   let go :: Int -> Parser e s (arr a)
       go !ix = if ix < len
@@ -425,7 +428,5 @@ replicate len p = do
           a <- p
           effect (C.write marr ix a)
           go (ix + 1)
-        else do
-          effect (C.unsafeFreeze marr)
+        else effect (C.unsafeFreeze marr)
   go 0
-{-# inline replicate #-}
