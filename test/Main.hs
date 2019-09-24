@@ -56,13 +56,33 @@ tests = testGroup "Parser"
         @=?
         P.parseBytes (Latin.decUnsignedInt ())
           (bytes "4654667,55")
+    , testCase "C" $
+        P.Failure ()
+        @=?
+        P.parseBytes (Latin.decUnsignedInt ())
+          (bytes ('1' : show (maxBound :: Int)))
+    , testCase "D" $
+        P.Failure ()
+        @=?
+        P.parseBytes (Latin.decUnsignedInt ())
+          (bytes "2481030337885070917891")
+    , testCase "E" $
+        P.Failure ()
+        @=?
+        P.parseBytes (Latin.decUnsignedInt ())
+          (bytes (show (fromIntegral @Int @Word maxBound + 1)))
+    , testCase "F" $
+        P.Success maxBound 0
+        @=?
+        P.parseBytes (Latin.decUnsignedInt ())
+          (bytes (show (maxBound :: Int)))
     , testProperty "property" $ \(QC.NonNegative i) ->
         P.parseBytes (Latin.decUnsignedInt ()) (bytes (show i))
         ===
         P.Success i 0
     ]
   , testGroup "decPositiveInteger"
-    [ testCase "A" $ 
+    [ testCase "A" $
         P.parseBytes (Latin.decUnsignedInteger ())
           (bytes "5469999463123462573426452736423546373235260")
         @=?
@@ -83,24 +103,80 @@ tests = testGroup "Parser"
         (P.Success (read ('2' : show i) :: Integer) 0 :: P.Result () Integer)
     ]
   , testGroup "decSignedInteger"
-    [ testCase "A" $ 
+    [ testCase "A" $
         P.parseBytes (Latin.decSignedInteger ())
           (bytes "-54699994631234625734264527364235463732352601")
         @=?
         P.Success (-54699994631234625734264527364235463732352601) 0
+    , testCase "B" $
+        P.Success (3,(-206173954435705292503)) 0
+        @=?
+        P.parseBytes
+          ( pure (,)
+            <*> Latin.decSignedInteger ()
+            <*  Latin.char () 'e'
+            <*> Latin.decSignedInteger ()
+          ) (bytes "3e-206173954435705292503")
     , testProperty "property" $ \(LargeInteger i) ->
         P.parseBytes (Latin.decSignedInteger ()) (bytes (show i))
         ===
         P.Success i 0
     ]
-  , testProperty "decSignedInt-A" $ \i ->
-      P.parseBytes (Latin.decSignedInt ()) (bytes (show i)) === P.Success i 0
-  , testProperty "decSignedInt-B" $ \i ->
-      P.parseBytes
-        (Latin.decSignedInt ())
-        (bytes ((if i >= 0 then "+" else "") ++ show i))
-      ===
-      P.Success i 0
+  , testGroup "decSignedInt"
+    [ testProperty "A" $ \i ->
+        P.parseBytes (Latin.decSignedInt ()) (bytes (show i))
+        ===
+        P.Success i 0
+    , testProperty "B" $ \i ->
+        P.parseBytes
+          (Latin.decSignedInt ())
+          (bytes ((if i >= 0 then "+" else "") ++ show i))
+        ===
+        P.Success i 0
+    , testCase "C" $
+        P.Failure ()
+        @=?
+        P.parseBytes (Latin.decSignedInt ())
+          (bytes ('1' : show (maxBound :: Int)))
+    , testCase "D" $
+        P.Failure ()
+        @=?
+        P.parseBytes (Latin.decSignedInt ())
+          (bytes ('-' : '3' : show (maxBound :: Int)))
+    , testCase "E" $
+        P.Failure ()
+        @=?
+        P.parseBytes (Latin.decSignedInt ())
+          (bytes "2481030337885070917891")
+    , testCase "F" $
+        P.Failure ()
+        @=?
+        P.parseBytes (Latin.decSignedInt ())
+          (bytes "-4305030950553840988981")
+    , testCase "G" $
+        P.Success minBound 0
+        @=?
+        P.parseBytes (Latin.decSignedInt ())
+          (bytes (show (minBound :: Int)))
+    , testCase "H" $
+        P.Success maxBound 0
+        @=?
+        P.parseBytes (Latin.decSignedInt ())
+          (bytes (show (maxBound :: Int)))
+    , testCase "I" $
+        P.Failure ()
+        @=?
+        P.parseBytes (Latin.decSignedInt ())
+          (bytes (show (fromIntegral @Int @Word maxBound + 1)))
+    , testCase "J" $
+        -- This is one number lower than the minimum bound for
+        -- a signed 64-bit number, but this test will pass on
+        -- 32-bit architectures as well.
+        P.Failure ()
+        @=?
+        P.parseBytes (Latin.decSignedInt ())
+          (bytes "-9223372036854775809")
+    ]
   , testCase "decWord-composition" $
       P.Success (42,8) 0
       @=?
@@ -129,7 +205,7 @@ bigEndianWord64 ::
      Word8 -> Word8 -> Word8 -> Word8
   -> Word8 -> Word8 -> Word8 -> Word8
   -> QC.Property
-bigEndianWord64 a b c d e f g h = 
+bigEndianWord64 a b c d e f g h =
   let arr = runST $ do
         m <- PM.newByteArray 11
         PM.writeByteArray m 0 (0xFF :: Word8)
@@ -164,7 +240,7 @@ newtype LargeInteger = LargeInteger Integer
 
 instance QC.Arbitrary LargeInteger where
   arbitrary = do
-      n <- QC.choose (1, 19)
+      n <- QC.choose (1, 27)
       sign <- QC.arbitrary
       r <- (if sign then negate else id) . foldr f 0
         <$> replicateM n QC.arbitrary

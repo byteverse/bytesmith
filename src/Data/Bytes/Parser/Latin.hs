@@ -72,7 +72,8 @@ import Data.Word (Word8)
 import Data.Char (ord)
 import Data.Kind (Type)
 import GHC.Exts (Int(I#),Char(C#),Word#,Int#,Char#,(+#),(-#),indexCharArray#)
-import GHC.Exts (TYPE,RuntimeRep)
+import GHC.Exts (TYPE,RuntimeRep,int2Word#,or#)
+import GHC.Exts (ltWord#,gtWord#,notI#)
 import GHC.Word (Word(W#),Word8(W8#),Word16(W16#),Word32(W32#))
 
 import qualified GHC.Exts as Exts
@@ -429,7 +430,10 @@ decTrailingInt# ::
   -> Int# -- Leading digit, should be between @0@ and @9@.
   -> Parser e s Int#
 decTrailingInt# e !w =
-  Parser (\chunk0 s0 -> (# s0, decPosIntMore e (I# w) (boxBytes chunk0) #))
+  Parser (\chunk0 s0 -> (# s0, decPosIntMore e (W# (int2Word# w)) maxIntAsWord (boxBytes chunk0) #))
+
+maxIntAsWord :: Word
+maxIntAsWord = fromIntegral (maxBound :: Int)
 
 -- | Parse a decimal-encoded number. If the number is too large to be
 -- represented by a machine integer, this fails with the provided
@@ -455,7 +459,7 @@ decSignedInt# e = any e `bindFromLiftedToInt` \c -> case c of
     (\chunk0 s0 ->
       let !w = char2Word c - 48
         in if w < 10
-             then (# s0, decPosIntMore e (fromIntegral @Word @Int w) (boxBytes chunk0) #)
+             then (# s0, decPosIntMore e w maxIntAsWord (boxBytes chunk0) #)
              else (# s0, (# e | #) #)
     )
 
@@ -470,7 +474,7 @@ decStandardInt# e = any e `bindFromLiftedToInt` \c -> case c of
     (\chunk0 s0 ->
       let !w = char2Word c - 48
         in if w < 10
-             then (# s0, decPosIntMore e (fromIntegral @Word @Int w) (boxBytes chunk0) #)
+             then (# s0, decPosIntMore e w maxIntAsWord (boxBytes chunk0) #)
              else (# s0, (# e | #) #)
     )
 
@@ -526,7 +530,7 @@ decPosIntStart e !chunk0 s0 = if length chunk0 > 0
     let !w = fromIntegral @Word8 @Word
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
      in if w < 10
-          then (# s0, decPosIntMore e (fromIntegral @Word @Int w) (Bytes.unsafeDrop 1 chunk0) #)
+          then (# s0, decPosIntMore e w maxIntAsWord (Bytes.unsafeDrop 1 chunk0) #)
           else (# s0, (# e | #) #)
   else (# s0, (# e | #) #)
 
@@ -539,7 +543,12 @@ decNegIntStart e !chunk0 s0 = if length chunk0 > 0
     let !w = fromIntegral @Word8 @Word
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
      in if w < 10
-          then (# s0, decNegIntMore e (negate (fromIntegral @Word @Int w)) (Bytes.unsafeDrop 1 chunk0) #)
+          then 
+            case decPosIntMore e w (maxIntAsWord + 1) (Bytes.unsafeDrop 1 chunk0) of
+             (# | (# x, y, z #) #) -> 
+               (# s0, (# | (# (notI# x +# 1# ), y, z #) #) #)
+             (# err | #) -> 
+               (# s0, (# err | #) #)
           else (# s0, (# e | #) #)
   else (# s0, (# e | #) #)
 
@@ -562,43 +571,26 @@ decUnsignedIntegerStart e !chunk0 s0 = if length chunk0 > 0
   else (# s0, (# e | #) #)
 
 -- This will not inline since it is recursive, but worker
--- wrapper will still happen.
-decNegIntMore ::
-     e -- Error message
-  -> Int -- Accumulator
-  -> Bytes -- Chunk
-  -> Result# e Int#
-decNegIntMore e !acc !chunk0 = if length chunk0 > 0
-  then
-    let !w = fromIntegral @Word8 @Word
-          (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-        !acc' = acc * 10 - (fromIntegral @Word @Int w)
-     in if w < 10
-          then if acc' <= acc
-            then decNegIntMore e acc' (Bytes.unsafeDrop 1 chunk0)
-            else (# e | #)
-          else (# | (# unI acc, unI (offset chunk0), unI (length chunk0)  #) #)
-  else (# | (# unI acc, unI (offset chunk0), 0# #) #)
-
--- This will not inline since it is recursive, but worker
 -- wrapper will still happen. Fails if the accumulator
--- exceeds the size of a machine integer.
+-- exceeds the upper bound.
 decPosIntMore ::
      e -- Error message
-  -> Int -- Accumulator
+  -> Word -- Accumulator, precondition: less than or equal to bound 
+  -> Word -- Inclusive Upper Bound, either (2^63 - 1) or 2^63
   -> Bytes -- Chunk
   -> Result# e Int#
-decPosIntMore e !acc !chunk0 = if len > 0
+decPosIntMore e !acc !upper !chunk0 = if len > 0
   then
     let !w = fromIntegral @Word8 @Word
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-        !acc' = acc * 10 + (fromIntegral @Word @Int w)
      in if w < 10
-          then if acc' >= acc
-            then decPosIntMore e acc' (Bytes.unsafeDrop 1 chunk0)
-            else (# e | #)
-          else (# | (# unI acc, unI (offset chunk0), len# #) #)
-  else (# | (# unI acc, unI (offset chunk0), 0# #) #)
+          then
+            let (overflow,acc') = positivePushBase10 acc w upper
+             in if overflow
+               then (# e | #)
+               else decPosIntMore e acc' upper (Bytes.unsafeDrop 1 chunk0)
+          else (# | (# unI (fromIntegral acc), unI (offset chunk0), len# #) #)
+  else (# | (# unI (fromIntegral acc), unI (offset chunk0), 0# #) #)
   where
   !len@(I# len# ) = length chunk0
 
@@ -724,3 +716,15 @@ uneffectfulWord# :: (Bytes -> Result# e Word#) -> Parser e s Word#
 uneffectfulWord# f = Parser
   ( \b s0 -> (# s0, (f (boxBytes b)) #) )
 
+-- Precondition: the arguments are non-negative. Boolean is
+-- true when overflow happens. Performs: a * 10 + b
+-- Postcondition: when overflow is false, the resulting
+-- word is less than or equal to the upper bound
+positivePushBase10 :: Word -> Word -> Word -> (Bool,Word)
+positivePushBase10 (W# a) (W# b) (W# upper) = 
+  let !(# ca, r0 #) = Exts.timesWord2# a 10##
+      !r1 = Exts.plusWord# r0 b
+      !cb = int2Word# (gtWord# r1 upper)
+      !cc = int2Word# (ltWord# r1 0##)
+      !c = ca `or#` cb `or#` cc
+   in (case c of { 0## -> False; _ -> True }, W# r1)
