@@ -1,5 +1,10 @@
 # Revision history for bytesmith
 
+## 0.2.0.1 -- 2019-09-24
+
+* Correct an overflow-detection mistake in the implementation
+  of machine-word parsers.
+
 ## 0.2.0.0 -- 2019-09-24
 
 * Add big-endian word parsers.
