@@ -60,6 +60,8 @@ module Data.Bytes.Parser.Latin
   , hexWord16
   , hexNibbleLower
   , tryHexNibbleLower
+  , hexNibble
+  , tryHexNibble
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
@@ -717,6 +719,19 @@ hexNibbleLower e = uneffectful $ \chunk -> case length chunk of
        | w >= 97 && w < 103 -> InternalSuccess (fromIntegral w - 87) (offset chunk + 1) (length chunk - 1)
        | otherwise -> InternalFailure e
 
+-- | Consume a single character that is the case-insensitive hexadecimal
+-- encoding of a 4-bit word. Fails if the character is not in the class
+-- @[a-fA-F0-9]@.
+hexNibble :: e -> Parser e s Word
+hexNibble e = uneffectful $ \chunk -> case length chunk of
+  0 -> InternalFailure e
+  _ ->
+    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8 in
+    if | w >= 48 && w < 58 -> InternalSuccess (fromIntegral w - 48) (offset chunk + 1) (length chunk - 1)
+       | w >= 65 && w < 71 -> InternalSuccess (fromIntegral w - 55) (offset chunk + 1) (length chunk - 1)
+       | w >= 97 && w < 103 -> InternalSuccess (fromIntegral w - 87) (offset chunk + 1) (length chunk - 1)
+       | otherwise -> InternalFailure e
+
 -- | Consume a single character that is the lowercase hexadecimal
 -- encoding of a 4-bit word. Returns @Nothing@ without consuming
 -- the character if it is not in the class @[a-f0-9]@. The parser
@@ -727,6 +742,20 @@ tryHexNibbleLower = unfailing $ \chunk -> case length chunk of
   _ ->
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8 in
     if | w >= 48 && w < 58 -> InternalStep (Just (fromIntegral w - 48)) (offset chunk + 1) (length chunk - 1)
+       | w >= 97 && w < 103 -> InternalStep (Just (fromIntegral w - 87)) (offset chunk + 1) (length chunk - 1)
+       | otherwise -> InternalStep Nothing (offset chunk) (length chunk)
+
+-- | Consume a single character that is the case-insensitive hexadecimal
+-- encoding of a 4-bit word. Returns @Nothing@ without consuming
+-- the character if it is not in the class @[a-fA-F0-9]@. This parser
+-- never fails.
+tryHexNibble :: Parser e s (Maybe Word)
+tryHexNibble = unfailing $ \chunk -> case length chunk of
+  0 -> InternalStep Nothing (offset chunk) (length chunk)
+  _ ->
+    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8 in
+    if | w >= 48 && w < 58 -> InternalStep (Just (fromIntegral w - 48)) (offset chunk + 1) (length chunk - 1)
+       | w >= 65 && w < 71 -> InternalStep (Just (fromIntegral w - 55)) (offset chunk + 1) (length chunk - 1)
        | w >= 97 && w < 103 -> InternalStep (Just (fromIntegral w - 87)) (offset chunk + 1) (length chunk - 1)
        | otherwise -> InternalStep Nothing (offset chunk) (length chunk)
 

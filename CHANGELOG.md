@@ -3,6 +3,7 @@
 ## 0.2.1.0 -- 2019-??-??
 
 * Add `hexNibbleLower` and `tryHexNibbleLower`.
+* Add `hexNibble` and `tryHexNibble`.
 
 ## 0.2.0.1 -- 2019-09-24
 
