@@ -1,5 +1,9 @@
 # Revision history for bytesmith
 
+## 0.2.1.0 -- 2019-??-??
+
+* Add `hexNibbleLower` and `tryHexNibbleLower`.
+
 ## 0.2.0.1 -- 2019-09-24
 
 * Correct an overflow-detection mistake in the implementation

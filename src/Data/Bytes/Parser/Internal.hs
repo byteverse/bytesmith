@@ -19,9 +19,11 @@
 module Data.Bytes.Parser.Internal
   ( Parser(..)
   , InternalResult(..)
+  , InternalStep(..)
   , Bytes#
   , ST#
   , Result#
+  , unfailing
   , uneffectful
   , uneffectful#
   , boxBytes
@@ -57,10 +59,19 @@ data InternalResult e a
     -- The parsed value, the offset after the last consumed byte, and the
     -- number of bytes remaining in parsed slice.
 
+data InternalStep a = InternalStep !a !Int !Int
+
 uneffectful :: (Bytes -> InternalResult e a) -> Parser e s a
 {-# inline uneffectful #-}
 uneffectful f = Parser
   ( \b s0 -> (# s0, unboxResult (f (boxBytes b)) #) )
+
+-- This is like uneffectful but for parsers that always succeed.
+-- These combinators typically have names that begin with @try@.
+unfailing :: (Bytes -> InternalStep a) -> Parser e s a
+{-# inline unfailing #-}
+unfailing f = Parser
+  ( \b s0 -> (# s0, case f (boxBytes b) of { InternalStep a (I# off) (I# len) -> (# | (# a, off, len #) #) } #) )
 
 boxBytes :: Bytes# -> Bytes
 {-# inline boxBytes #-}

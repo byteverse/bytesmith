@@ -81,6 +81,22 @@ tests = testGroup "Parser"
         ===
         P.Success i 0
     ]
+  , testGroup "hexNibbleLower"
+    [ testCase "A" $
+        P.parseBytes (Latin.hexNibbleLower ()) (bytes "Ab") @=? P.Failure ()
+    , testCase "B" $
+        P.parseBytes (Latin.hexNibbleLower ()) (bytes "bA") @=? P.Success 0xb 1
+    , testCase "C" $
+        P.parseBytes (Latin.hexNibbleLower ()) (bytes "") @=? P.Failure ()
+    ]
+  , testGroup "tryHexNibbleLower"
+    [ testCase "A" $
+        P.parseBytes Latin.tryHexNibbleLower (bytes "Ab") @=? P.Success @() Nothing 2
+    , testCase "B" $
+        P.parseBytes Latin.tryHexNibbleLower (bytes "bA") @=? P.Success @() (Just 0xb) 1
+    , testCase "C" $
+        P.parseBytes Latin.tryHexNibbleLower (bytes "") @=? P.Success @() Nothing 0
+    ]
   , testGroup "decPositiveInteger"
     [ testCase "A" $
         P.parseBytes (Latin.decUnsignedInteger ())

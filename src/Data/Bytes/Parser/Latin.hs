@@ -58,12 +58,15 @@ module Data.Bytes.Parser.Latin
   , decTrailingInteger
     -- ** Hexadecimal
   , hexWord16
+  , hexNibbleLower
+  , tryHexNibbleLower
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
 
 import Data.Bits ((.|.))
 import Data.Bytes.Types (Bytes(..))
+import Data.Bytes.Parser.Internal (InternalStep(..),unfailing)
 import Data.Bytes.Parser.Internal (Parser(..),ST#,uneffectful,Result#,uneffectful#)
 import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
 import Data.Bytes.Parser.Internal (boxBytes)
@@ -702,6 +705,30 @@ hexWord16# e = uneffectfulWord# $ \chunk -> if length chunk >= 4
            | otherwise -> (# e | #)
   else (# e | #)
 
+-- | Consume a single character that is the lowercase hexadecimal
+-- encoding of a 4-bit word. Fails if the character is not in the class
+-- @[a-f0-9]@.
+hexNibbleLower :: e -> Parser e s Word
+hexNibbleLower e = uneffectful $ \chunk -> case length chunk of
+  0 -> InternalFailure e
+  _ ->
+    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8 in
+    if | w >= 48 && w < 58 -> InternalSuccess (fromIntegral w - 48) (offset chunk + 1) (length chunk - 1)
+       | w >= 97 && w < 103 -> InternalSuccess (fromIntegral w - 87) (offset chunk + 1) (length chunk - 1)
+       | otherwise -> InternalFailure e
+
+-- | Consume a single character that is the lowercase hexadecimal
+-- encoding of a 4-bit word. Returns @Nothing@ without consuming
+-- the character if it is not in the class @[a-f0-9]@. The parser
+-- never fails.
+tryHexNibbleLower :: Parser e s (Maybe Word)
+tryHexNibbleLower = unfailing $ \chunk -> case length chunk of
+  0 -> InternalStep Nothing (offset chunk) (length chunk)
+  _ ->
+    let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8 in
+    if | w >= 48 && w < 58 -> InternalStep (Just (fromIntegral w - 48)) (offset chunk + 1) (length chunk - 1)
+       | w >= 97 && w < 103 -> InternalStep (Just (fromIntegral w - 87)) (offset chunk + 1) (length chunk - 1)
+       | otherwise -> InternalStep Nothing (offset chunk) (length chunk)
 
 -- Returns the maximum machine word if the argument is not
 -- the ASCII encoding of a hexadecimal digit.
