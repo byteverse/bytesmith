@@ -46,6 +46,7 @@ module Data.Bytes.Parser.Latin
   , decWord8
   , decWord16
   , decWord32
+  , decWord64
     -- *** Signed
   , decUnsignedInt
   , decUnsignedInt#
@@ -79,7 +80,7 @@ import Data.Kind (Type)
 import GHC.Exts (Int(I#),Char(C#),Word#,Int#,Char#,(+#),(-#),indexCharArray#)
 import GHC.Exts (TYPE,RuntimeRep,int2Word#,or#)
 import GHC.Exts (ltWord#,gtWord#,notI#)
-import GHC.Word (Word(W#),Word8(W8#),Word16(W16#),Word32(W32#))
+import GHC.Word (Word(W#),Word8(W8#),Word16(W16#),Word32(W32#),Word64(W64#))
 
 import qualified GHC.Exts as Exts
 import qualified Data.Bytes as Bytes
@@ -300,6 +301,16 @@ decWord e = Parser
     (# s1, r #) -> (# s1, upcastWordResult r #)
   )
 
+-- | Parse a decimal-encoded unsigned number. If the number is
+-- too large to be represented by a 64-bit word, this fails with
+-- the provided error message. This accepts any number of leading
+-- zeroes.
+decWord64 :: e -> Parser e s Word64
+decWord64 e = Parser
+  (\chunk0 s0 -> case decWordStart e (boxBytes chunk0) s0 of
+    (# s1, r #) -> (# s1, upcastWord64Result r #)
+  )
+
 decSmallWordStart ::
      e -- Error message
   -> Word -- Upper Bound
@@ -321,20 +332,29 @@ decWordMore ::
   -> Word -- Accumulator
   -> Bytes -- Chunk
   -> Result# e Word#
-decWordMore e !acc !chunk0 = if length chunk0 > 0
-  then
+decWordMore e !acc !chunk0 = case len of
+  0 -> (# | (# unW (fromIntegral acc), unI (offset chunk0), 0# #) #)
+  _ ->
     let !w = fromIntegral @Word8 @Word
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
-        !acc' = acc * 10 + w
-     in if w < 10 && acc' >= acc
-          then decWordMore e acc' (Bytes.unsafeDrop 1 chunk0)
-          else (# | (# unW acc, unI (offset chunk0), unI (length chunk0)  #) #)
-  else (# | (# unW acc, unI (offset chunk0), 0# #) #)
-
+     in if w < 10
+          then
+            let (overflow,acc') = unsignedPushBase10 acc w
+             in if overflow
+               then (# e | #)
+               else decWordMore e acc' (Bytes.unsafeDrop 1 chunk0)
+          else (# | (# unW (fromIntegral acc), unI (offset chunk0), len# #) #)
+  where
+  !len@(I# len# ) = length chunk0
 
 upcastWordResult :: Result# e Word# -> Result# e Word
 upcastWordResult (# e | #) = (# e | #)
 upcastWordResult (# | (# a, b, c #) #) = (# | (# W# a, b, c #) #)
+
+-- This only works on 64-bit platforms.
+upcastWord64Result :: Result# e Word# -> Result# e Word64
+upcastWord64Result (# e | #) = (# e | #)
+upcastWord64Result (# | (# a, b, c #) #) = (# | (# W64# a, b, c #) #)
 
 decSmallWordMore ::
      e -- Error message
@@ -784,3 +804,9 @@ positivePushBase10 (W# a) (W# b) (W# upper) =
       !cc = int2Word# (ltWord# r1 0##)
       !c = ca `or#` cb `or#` cc
    in (case c of { 0## -> False; _ -> True }, W# r1)
+
+unsignedPushBase10 :: Word -> Word -> (Bool,Word)
+unsignedPushBase10 (W# a) (W# b) = 
+  let !(# ca, r0 #) = Exts.timesWord2# a 10##
+      !r1 = Exts.plusWord# r0 b
+   in (case ca of { 0## -> False; _ -> True }, W# r1)

@@ -193,6 +193,13 @@ tests = testGroup "Parser"
         P.parseBytes (Latin.decSignedInt ())
           (bytes "-9223372036854775809")
     ]
+  , testGroup "decWord64"
+    [ testCase "A" $
+        P.Failure ()
+        @=?
+        P.parseBytes (Latin.decWord64 ())
+          (bytes "2481030337885070917891")
+    ]
   , testCase "decWord-composition" $
       P.Success (42,8) 0
       @=?
