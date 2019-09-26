@@ -33,8 +33,10 @@ module Data.Bytes.Parser
     -- * Many Bytes
   , take
   , takeWhile
+  , takeTrailedBy
     -- * Skip
   , skipWhile
+  , skipTrailedBy
     -- * Match
   , byteArray
   , bytes
@@ -80,8 +82,10 @@ module Data.Bytes.Parser
 
 import Prelude hiding (length,any,fail,takeWhile,take,replicate)
 
-import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes,boxBytes,Result#,uneffectful,fail)
-import Data.Bytes.Parser.Unsafe (unconsume)
+import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes)
+import Data.Bytes.Parser.Internal (boxBytes,Result#,uneffectful,fail)
+import Data.Bytes.Parser.Internal (uneffectful#)
+import Data.Bytes.Parser.Unsafe (unconsume,expose,cursor)
 import Data.Bytes.Types (Bytes(..))
 import Data.Primitive (ByteArray(..))
 import GHC.Exts (Int(I#),Word#,Int#,Char#,(+#),(-#),(>=#))
@@ -182,6 +186,38 @@ takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
 {-# inline takeWhile #-}
 takeWhile f = uneffectful $ \chunk -> case B.takeWhile f chunk of
   bs -> InternalSuccess bs (offset chunk + length bs) (length chunk - length bs)
+
+-- | Take bytes until the specified byte is encountered. Consumes
+-- the matched byte as well. Fails if the byte is not present.
+-- Visually, the cursor advancement and resulting @Bytes@ for
+-- @takeTrailedBy 0x19@ look like this:
+--
+-- >  0x10 0x13 0x08 0x15 0x19 0x23 0x17 | input
+-- > |---->---->---->---->----|          | cursor
+-- > {----*----*----*----}               | result bytes
+takeTrailedBy :: e -> Word8 -> Parser e s Bytes
+takeTrailedBy e !w = do
+  !start <- cursor
+  skipTrailedBy e w
+  !end <- cursor
+  !arr <- expose
+  pure (Bytes arr start (end - start))
+
+-- | Skip all characters until the character from the is encountered
+-- and then consume the matching byte as well.
+skipTrailedBy :: e -> Word8 -> Parser e s ()
+skipTrailedBy e !w = uneffectful# (\c -> skipUntilConsumeByteLoop e w c)
+
+skipUntilConsumeByteLoop ::
+     e -- Error message
+  -> Word8 -- byte to match
+  -> Bytes -- Chunk
+  -> Result# e ()
+skipUntilConsumeByteLoop e !w !c = if length c > 0
+  then if PM.indexByteArray (array c) (offset c) /= (w :: Word8)
+    then skipUntilConsumeByteLoop e w (B.unsafeDrop 1 c)
+    else (# | (# (), unI (offset c + 1), unI (length c - 1) #) #)
+  else (# e | #)
 
 -- | Take the given number of bytes. Fails if there is not enough
 --   remaining input.
@@ -430,3 +466,6 @@ replicate !len p = do
           go (ix + 1)
         else effect (C.unsafeFreeze marr)
   go 0
+
+unI :: Int -> Int#
+unI (I# w) = w
