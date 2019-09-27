@@ -809,4 +809,6 @@ unsignedPushBase10 :: Word -> Word -> (Bool,Word)
 unsignedPushBase10 (W# a) (W# b) = 
   let !(# ca, r0 #) = Exts.timesWord2# a 10##
       !r1 = Exts.plusWord# r0 b
-   in (case ca of { 0## -> False; _ -> True }, W# r1)
+      !cb = int2Word# (ltWord# r1 r0)
+      !c = ca `or#` cb
+   in (case c of { 0## -> False; _ -> True }, W# r1)
