@@ -1,3 +1,7 @@
+{-# language DeriveFunctor #-}
+{-# language DeriveFoldable #-}
+{-# language DerivingStrategies #-}
+
 module Data.Bytes.Parser.Types
   ( Parser(..)
   , Result(..)
@@ -13,7 +17,7 @@ data Result e a
   | Success {-# UNPACK #-} !(Slice a)
     -- ^ The parsed value and the number of bytes
     -- remaining in parsed slice.
-  deriving (Eq,Show)
+  deriving stock (Eq,Show,Foldable,Functor)
 
 -- | Slicing metadata (an offset and a length) accompanied
 -- by a value. This does not represent a slice into the
@@ -34,4 +38,4 @@ data Slice a = Slice
     -- ^ Length of the slice.
   , value :: a
     -- ^ The structured data that was successfully parsed.
-  } deriving (Eq,Show)
+  } deriving stock (Eq,Show,Foldable,Functor)
