@@ -22,7 +22,7 @@
 -- modules.
 module Data.Bytes.Parser
   ( -- * Types
-    Parser(..)
+    Parser
   , Result(..)
   , Slice(..)
     -- * Run Parsers

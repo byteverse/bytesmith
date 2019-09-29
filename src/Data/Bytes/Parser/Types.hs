@@ -3,7 +3,7 @@
 {-# language DerivingStrategies #-}
 
 module Data.Bytes.Parser.Types
-  ( Parser(..)
+  ( Parser
   , Result(..)
   , Slice(..)
   ) where

@@ -3,11 +3,13 @@
 {-# language DataKinds #-}
 {-# language DeriveFunctor #-}
 {-# language DerivingStrategies #-}
+{-# language DuplicateRecordFields #-}
 {-# language GADTSyntax #-}
 {-# language KindSignatures #-}
 {-# language LambdaCase #-}
 {-# language MagicHash #-}
 {-# language MultiWayIf #-}
+{-# language NamedFieldPuns #-}
 {-# language PolyKinds #-}
 {-# language RankNTypes #-}
 {-# language ScopedTypeVariables #-}
@@ -19,7 +21,10 @@
 -- | Everything in this module is unsafe and can lead to
 -- nondeterministic output or segfaults if used incorrectly.
 module Data.Bytes.Parser.Unsafe
-  ( cursor
+  ( -- * Types
+    Parser(..)
+    -- * Functions
+  , cursor
   , expose
   , unconsume
   , jump
@@ -36,27 +41,27 @@ import Data.Bytes.Parser.Internal (InternalResult(..))
 -- it possible to observe the internal difference between 'Bytes'
 -- that refer to equivalent slices. Be careful.
 cursor :: Parser e s Int
-cursor = uneffectful $ \chunk ->
-  InternalSuccess (offset chunk) (offset chunk) (length chunk)
+cursor = uneffectful $ \Bytes{offset,length} ->
+  InternalSuccess offset offset length
 
 -- | Return the byte array being parsed. This includes bytes
 -- that preceed the current offset and may include bytes that
 -- go beyond the length. This is somewhat dangerous, so only
 -- use this is you know what you're doing.
 expose :: Parser e s ByteArray
-expose = uneffectful $ \chunk ->
-  InternalSuccess (array chunk) (offset chunk) (length chunk)
+expose = uneffectful $ \Bytes{length,offset,array} ->
+  InternalSuccess array offset length
 
 -- | Move the cursor back by @n@ bytes. Precondition: you
 -- must have previously consumed at least @n@ bytes.
 unconsume :: Int -> Parser e s ()
-unconsume n = uneffectful $ \chunk ->
-  InternalSuccess () (offset chunk - n) (length chunk + n)
+unconsume n = uneffectful $ \Bytes{length,offset} ->
+  InternalSuccess () (offset - n) (length + n)
 
 -- | Set the position to the given index. Precondition: the index
 -- must be valid. It should be the result of an earlier call to
 -- 'cursor'.
 jump :: Int -> Parser e s ()
-jump ix = uneffectful $ \chunk ->
-  InternalSuccess () ix (length chunk + (offset chunk - ix))
+jump ix = uneffectful $ \(Bytes{length,offset}) ->
+  InternalSuccess () ix (length + (offset - ix))
 

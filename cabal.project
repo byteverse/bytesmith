@@ -1,0 +1,4 @@
+packages: .
+
+package bytesmith
+  ghc-options: -Wall -Werror
