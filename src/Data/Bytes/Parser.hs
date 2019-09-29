@@ -83,15 +83,15 @@ module Data.Bytes.Parser
 
 import Prelude hiding (length,any,fail,takeWhile,take,replicate)
 
-import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes)
+import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),ST#,unboxBytes)
 import Data.Bytes.Parser.Internal (boxBytes,Result#,uneffectful,fail)
 import Data.Bytes.Parser.Internal (uneffectful#)
 import Data.Bytes.Parser.Types (Result(Failure,Success),Slice(Slice))
 import Data.Bytes.Parser.Unsafe (unconsume,expose,cursor)
 import Data.Bytes.Types (Bytes(..))
 import Data.Primitive (ByteArray(..))
-import GHC.Exts (Int(I#),Word#,Int#,Char#,(+#),(-#),(>=#))
-import GHC.ST (ST(..),runST)
+import GHC.Exts (Int(I#),Word#,Int#,Char#,runRW#,(+#),(-#),(>=#))
+import GHC.ST (ST(..))
 import GHC.Word (Word32(W32#),Word8)
 import Data.Primitive.Contiguous (Contiguous,Element)
 
@@ -102,14 +102,21 @@ import qualified Data.Primitive.Contiguous as C
 -- | Parse a slice of a byte array. This can succeed even if the
 -- entire slice was not consumed by the parser.
 parseBytes :: forall e a. (forall s. Parser e s a) -> Bytes -> Result e a
-parseBytes p !b = runST action
+parseBytes p !b = runResultST action
   where
-  action :: forall s. ST s (Result e a)
-  action = case p @s of
-    Parser f -> ST
-      (\s0 -> case f (unboxBytes b) s0 of
-        (# s1, r #) -> (# s1, boxPublicResult r #)
-      )
+  action :: forall s. ST# s (Result# e a)
+  action s0 = case p @s of
+    Parser f -> f (unboxBytes b) s0
+
+-- This is used internally to help reduce boxing when a parser
+-- gets run. Due to the late inlining of runRW#, this variant
+-- of runST still cause the result value to be boxed. However,
+-- it avoids the additional boxing that the Success data
+-- constructor would normally cause.
+runResultST :: (forall s. ST# s (Result# e x)) -> Result e x
+runResultST f = case (runRW# (\s0 -> case f s0 of { (# _, r #) -> r })) of
+  (# e | #) -> Failure e
+  (# | (# x, off, len #) #) -> Success (Slice (I# off) (I# len) x)
 
 -- | Variant of 'parseBytes' that accepts an unsliced 'ByteArray'.
 parseByteArray :: (forall s. Parser e s a) -> ByteArray -> Result e a
