@@ -24,6 +24,7 @@ module Data.Bytes.Parser
   ( -- * Types
     Parser(..)
   , Result(..)
+  , Slice(..)
     -- * Run Parsers
   , parseByteArray
   , parseBytes
@@ -85,6 +86,7 @@ import Prelude hiding (length,any,fail,takeWhile,take,replicate)
 import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),unboxBytes)
 import Data.Bytes.Parser.Internal (boxBytes,Result#,uneffectful,fail)
 import Data.Bytes.Parser.Internal (uneffectful#)
+import Data.Bytes.Parser.Types (Result(Failure,Success),Slice(Slice))
 import Data.Bytes.Parser.Unsafe (unconsume,expose,cursor)
 import Data.Bytes.Types (Bytes(..))
 import Data.Primitive (ByteArray(..))
@@ -96,15 +98,6 @@ import Data.Primitive.Contiguous (Contiguous,Element)
 import qualified Data.Bytes as B
 import qualified Data.Primitive as PM
 import qualified Data.Primitive.Contiguous as C
-
--- | The result of running a parser.
-data Result e a
-  = Failure e
-    -- ^ An error message indicating what went wrong.
-  | Success !a !Int
-    -- ^ The parsed value and the number of bytes
-    -- remaining in parsed slice.
-  deriving (Eq,Show)
 
 -- | Parse a slice of a byte array. This can succeed even if the
 -- entire slice was not consumed by the parser.
@@ -262,7 +255,7 @@ isEndOfInput = uneffectful $ \chunk ->
   InternalSuccess (length chunk == 0) (offset chunk) (length chunk)
 
 boxPublicResult :: Result# e a -> Result e a
-boxPublicResult (# | (# a, _, c #) #) = Success a (I# c)
+boxPublicResult (# | (# a, b, c #) #) = Success (Slice (I# b) (I# c) a)
 boxPublicResult (# e | #) = Failure e
 
 -- | Convert a 'Word32' parser to a 'Word#' parser.

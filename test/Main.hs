@@ -11,6 +11,7 @@ import Data.Primitive (ByteArray,PrimArray)
 import Data.Word (Word8,Word64)
 import Data.Char (ord)
 import Data.Bytes.Types (Bytes(Bytes))
+import Data.Bytes.Parser.Types (Slice(Slice))
 import Test.Tasty (defaultMain,testGroup,TestTree)
 import Test.Tasty.HUnit ((@=?),testCase)
 import Test.Tasty.QuickCheck ((===),testProperty)
@@ -30,10 +31,13 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "Parser"
   [ testProperty "decStandardInt" $ \i ->
-      P.parseBytes (Latin.decStandardInt ()) (bytes (show i)) === P.Success i 0
+      withSz (show i) $ \str len ->
+        P.parseBytes (Latin.decStandardInt ()) str
+        ===
+        P.Success (Slice len 0 i)
   , testProperty "big-endian-word64" bigEndianWord64
   , testCase "delimit" $
-      P.Success (167,14625) 0
+      P.Success (Slice 13 0 (167,14625))
       @=?
       P.parseBytes
         (do len <- Latin.decUnsignedInt ()
@@ -52,7 +56,7 @@ tests = testGroup "Parser"
         P.parseBytes (Latin.decUnsignedInt ())
           (bytes "742493495120739103935542")
     , testCase "B" $
-        P.Success 4654667 3
+        P.Success (Slice 8 3 4654667)
         @=?
         P.parseBytes (Latin.decUnsignedInt ())
           (bytes "4654667,55")
@@ -71,61 +75,73 @@ tests = testGroup "Parser"
         @=?
         P.parseBytes (Latin.decUnsignedInt ())
           (bytes (show (fromIntegral @Int @Word maxBound + 1)))
-    , testCase "F" $
-        P.Success maxBound 0
+    , testCase "F" $ withSz (show (maxBound :: Int)) $ \str len ->
+        P.Success (Slice len 0 maxBound)
         @=?
-        P.parseBytes (Latin.decUnsignedInt ())
-          (bytes (show (maxBound :: Int)))
+        P.parseBytes (Latin.decUnsignedInt ()) str
     , testProperty "property" $ \(QC.NonNegative i) ->
-        P.parseBytes (Latin.decUnsignedInt ()) (bytes (show i))
-        ===
-        P.Success i 0
+        withSz (show i) $ \str len ->
+          P.parseBytes (Latin.decUnsignedInt ()) str
+          ===
+          P.Success (Slice len 0 i)
     ]
   , testGroup "hexNibbleLower"
     [ testCase "A" $
         P.parseBytes (Latin.hexNibbleLower ()) (bytes "Ab") @=? P.Failure ()
     , testCase "B" $
-        P.parseBytes (Latin.hexNibbleLower ()) (bytes "bA") @=? P.Success 0xb 1
+        P.parseBytes (Latin.hexNibbleLower ()) (bytes "bA") @=? P.Success (Slice 2 1 0xb)
     , testCase "C" $
         P.parseBytes (Latin.hexNibbleLower ()) (bytes "") @=? P.Failure ()
     ]
   , testGroup "tryHexNibbleLower"
     [ testCase "A" $
-        P.parseBytes Latin.tryHexNibbleLower (bytes "Ab") @=? P.Success @() Nothing 2
+        P.Success @() (Slice 1 2 Nothing)
+        @=?
+        P.parseBytes Latin.tryHexNibbleLower (bytes "Ab")
     , testCase "B" $
-        P.parseBytes Latin.tryHexNibbleLower (bytes "bA") @=? P.Success @() (Just 0xb) 1
+        P.Success @() (Slice 2 1 (Just 0xb))
+        @=?
+        P.parseBytes Latin.tryHexNibbleLower (bytes "bA")
     , testCase "C" $
-        P.parseBytes Latin.tryHexNibbleLower (bytes "") @=? P.Success @() Nothing 0
+        P.Success @() (Slice 1 0 Nothing)
+        @=?
+        P.parseBytes Latin.tryHexNibbleLower (bytes "")
     ]
   , testGroup "decPositiveInteger"
     [ testCase "A" $
         P.parseBytes (Latin.decUnsignedInteger ())
           (bytes "5469999463123462573426452736423546373235260")
         @=?
-        P.Success 5469999463123462573426452736423546373235260 0
+        P.Success
+          (Slice 44 0 5469999463123462573426452736423546373235260)
     , testProperty "property" $ \(LargeInteger i) ->
-        i >= 0
-        QC.==>
-        P.parseBytes (Latin.decUnsignedInteger ()) (bytes (show i))
-        ===
-        P.Success i 0
+        withSz (show i) $ \str len ->
+          i >= 0
+          QC.==>
+          P.parseBytes (Latin.decUnsignedInteger ()) str
+          ===
+          P.Success (Slice len 0 i)
     ]
   , testGroup "decTrailingInteger"
     [ testProperty "property" $ \(LargeInteger i) ->
-        i >= 0
-        QC.==>
-        P.parseBytes (Latin.decTrailingInteger 2) (bytes (show i))
-        ===
-        (P.Success (read ('2' : show i) :: Integer) 0 :: P.Result () Integer)
+        withSz (show i) $ \str sz ->
+          i >= 0
+          QC.==>
+          P.parseBytes (Latin.decTrailingInteger 2) str
+          ===
+          (P.Success (Slice sz 0 (read ('2' : show i) :: Integer)) :: P.Result () Integer)
     ]
   , testGroup "decSignedInteger"
     [ testCase "A" $
         P.parseBytes (Latin.decSignedInteger ())
           (bytes "-54699994631234625734264527364235463732352601")
         @=?
-        P.Success (-54699994631234625734264527364235463732352601) 0
-    , testCase "B" $
-        P.Success (3,(-206173954435705292503)) 0
+        P.Success
+          ( Slice 46 0
+            (-54699994631234625734264527364235463732352601)
+          )
+    , testCase "B" $ 
+        P.Success (Slice 25 0 (3,(-206173954435705292503)))
         @=?
         P.parseBytes
           ( pure (,)
@@ -134,21 +150,22 @@ tests = testGroup "Parser"
             <*> Latin.decSignedInteger ()
           ) (bytes "3e-206173954435705292503")
     , testProperty "property" $ \(LargeInteger i) ->
-        P.parseBytes (Latin.decSignedInteger ()) (bytes (show i))
-        ===
-        P.Success i 0
+        withSz (show i) $ \str len ->
+          P.parseBytes (Latin.decSignedInteger ()) str
+          ===
+          P.Success (Slice len 0 i)
     ]
   , testGroup "decSignedInt"
-    [ testProperty "A" $ \i ->
-        P.parseBytes (Latin.decSignedInt ()) (bytes (show i))
+    [ testProperty "A" $ \i -> withSz (show i) $ \str len ->
+        P.parseBytes (Latin.decSignedInt ()) str
         ===
-        P.Success i 0
+        P.Success (Slice len 0 i)
     , testProperty "B" $ \i ->
-        P.parseBytes
-          (Latin.decSignedInt ())
-          (bytes ((if i >= 0 then "+" else "") ++ show i))
-        ===
-        P.Success i 0
+        let s = (if i >= 0 then "+" else "") ++ show i in
+        withSz s $ \str len ->
+          P.parseBytes (Latin.decSignedInt ()) str
+          ===
+          P.Success (Slice len 0 i)
     , testCase "C" $
         P.Failure ()
         @=?
@@ -169,16 +186,14 @@ tests = testGroup "Parser"
         @=?
         P.parseBytes (Latin.decSignedInt ())
           (bytes "-4305030950553840988981")
-    , testCase "G" $
-        P.Success minBound 0
+    , testCase "G" $ withSz (show (minBound :: Int)) $ \str len ->
+        P.Success (Slice len 0 minBound)
         @=?
-        P.parseBytes (Latin.decSignedInt ())
-          (bytes (show (minBound :: Int)))
-    , testCase "H" $
-        P.Success maxBound 0
+        P.parseBytes (Latin.decSignedInt ()) str
+    , testCase "H" $ withSz (show (maxBound :: Int)) $ \str len ->
+        P.Success (Slice len 0 maxBound)
         @=?
-        P.parseBytes (Latin.decSignedInt ())
-          (bytes (show (maxBound :: Int)))
+        P.parseBytes (Latin.decSignedInt ()) str
     , testCase "I" $
         P.Failure ()
         @=?
@@ -201,7 +216,7 @@ tests = testGroup "Parser"
           (bytes "2481030337885070917891")
     ]
   , testCase "decWord-composition" $
-      P.Success (42,8) 0
+      P.Success (Slice 6 0 (42,8))
       @=?
       P.parseBytes
         ( pure (,)
@@ -211,7 +226,7 @@ tests = testGroup "Parser"
         <*  Ascii.char () '.'
         ) (bytes "42.8.")
   , testCase "decWord-replicate" $
-      P.Success (Exts.fromList [42,93] :: PrimArray Word) 0
+      P.Success (Slice 7 0 (Exts.fromList [42,93] :: PrimArray Word))
       @=?
       P.parseBytes
         (P.replicate 2 (Ascii.decWord () <* Ascii.char () '.'))
@@ -254,7 +269,7 @@ bigEndianWord64 a b c d e f g h =
         + fromIntegral h * 256 ^ (0 :: Integer)
    in P.parseBytes (BigEndian.word64 ()) (Bytes arr 2 9)
       ===
-      P.Success expected 1
+      P.Success (Slice 10 1 expected)
 
 -- The Arbitrary instance for Integer that comes with
 -- QuickCheck only generates small numbers.
@@ -272,3 +287,7 @@ instance QC.Arbitrary LargeInteger where
       f :: Word8 -> Integer -> Integer
       f w acc = (acc `Bits.shiftL` 8) + fromIntegral w
 
+-- We add an extra 1 since bytes gives us a slice that
+-- starts at that offset.
+withSz :: String -> (Bytes -> Int -> a) -> a
+withSz str f = f (bytes str) (length str + 1)

@@ -58,7 +58,7 @@ module Data.Bytes.Parser.Latin
   , decUnsignedInteger
   , decTrailingInteger
     -- ** Hexadecimal
-  , hexWord16
+  , hexFixedWord16
   , hexNibbleLower
   , tryHexNibbleLower
   , hexNibble
@@ -699,18 +699,18 @@ skipUntilConsumeLoop e !w !c = if length c > 0
 -- This is insensitive to case. This is particularly useful when
 -- parsing escape sequences in C or JSON, which allow encoding
 -- characters in the Basic Multilingual Plane as @\\uhhhh@.
-hexWord16 :: e -> Parser e s Word16
-{-# inline hexWord16 #-}
-hexWord16 e = Parser
-  (\x s0 -> case runParser (hexWord16# e) x s0 of
+hexFixedWord16 :: e -> Parser e s Word16
+{-# inline hexFixedWord16 #-}
+hexFixedWord16 e = Parser
+  (\x s0 -> case runParser (hexFixedWord16# e) x s0 of
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
       (# | (# a, b, c #) #) -> (# s1, (# | (# W16# a, b, c #) #) #)
   )
 
-hexWord16# :: e -> Parser e s Word#
-{-# noinline hexWord16# #-}
-hexWord16# e = uneffectfulWord# $ \chunk -> if length chunk >= 4
+hexFixedWord16# :: e -> Parser e s Word#
+{-# noinline hexFixedWord16# #-}
+hexFixedWord16# e = uneffectfulWord# $ \chunk -> if length chunk >= 4
   then
     let !w0@(W# n0) = oneHex $ PM.indexByteArray (array chunk) (offset chunk)
         !w1@(W# n1) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 1)

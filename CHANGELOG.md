@@ -1,7 +1,9 @@
 # Revision history for bytesmith
 
-## 0.2.1.0 -- 2019-??-??
+## 0.3.0.0 -- 2019-??-??
 
+* Include the offset into the byte sequence in `Result`. Breaking change.
+* Rename `hexWord16` to `hexFixedWord16`. Breaking change.
 * Add `hexNibbleLower` and `tryHexNibbleLower`.
 * Add `hexNibble` and `tryHexNibble`.
 
