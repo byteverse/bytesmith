@@ -4,6 +4,7 @@
 
 * Include the offset into the byte sequence in `Result`. Breaking change.
 * Rename `hexWord16` to `hexFixedWord16`. Breaking change.
+* Rename `parseBytesST` to `parseBytesEffectfully`. Breaking change.
 * Add `hexNibbleLower` and `tryHexNibbleLower`.
 * Add `hexNibble` and `tryHexNibble`.
 

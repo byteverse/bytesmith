@@ -28,7 +28,7 @@ module Data.Bytes.Parser
     -- * Run Parsers
   , parseByteArray
   , parseBytes
-  , parseBytesST
+  , parseBytesEffectfully
     -- * One Byte
   , any
     -- * Many Bytes
@@ -125,8 +125,8 @@ parseByteArray p b =
 
 -- | Variant of 'parseBytes' that allows the parser to be run
 -- as part of an existing effectful context.
-parseBytesST :: Parser e s a -> Bytes -> ST s (Result e a)
-parseBytesST (Parser f) !b = ST
+parseBytesEffectfully :: Parser e s a -> Bytes -> ST s (Result e a)
+parseBytesEffectfully (Parser f) !b = ST
   (\s0 -> case f (unboxBytes b) s0 of
     (# s1, r #) -> (# s1, boxPublicResult r #)
   )
@@ -422,9 +422,9 @@ measure (Parser f) = Parser
 -- | Run a parser in a delimited context, failing if the requested number
 -- of bytes are not available or if the delimited parser does not
 -- consume all input. This combinator can be understood as a composition
--- of 'take', 'effect', 'parseBytesST', and 'endOfInput'. It is provided as
--- a single combinator because for convenience and because it is easy
--- make mistakes when manually assembling the aforementioned parsers.
+-- of 'take', 'effect', 'parseBytesEffectfully', and 'endOfInput'. It is
+-- provided as a single combinator because for convenience and because it is
+-- easy to make mistakes when manually assembling the aforementioned parsers.
 -- The pattern of prefixing an encoding with its length is common.
 -- This is discussed more in
 -- <https://github.com/bos/attoparsec/issues/129 attoparsec issue #129>.
