@@ -177,7 +177,7 @@ any e = uneffectful $ \chunk -> if length chunk > 0
      in InternalSuccess c (offset chunk + 1) (length chunk - 1)
   else InternalFailure e
 
--- | Consume a character from the input or return Nothing if
+-- | Consume a character from the input or return @Nothing@ if
 -- end of the stream has been reached. Since ISO 8859-1 maps every
 -- bytes to a character, this parser never fails.
 opt :: Parser e s (Maybe Char)
