@@ -1,4 +1,5 @@
 {-# language BangPatterns #-}
+{-# language DataKinds #-}
 {-# language MultiWayIf #-}
 {-# language NumDecimals #-}
 {-# language OverloadedStrings #-}
@@ -7,20 +8,23 @@
 
 import Control.Monad (replicateM)
 import Control.Monad.ST (runST)
-import Data.Primitive (ByteArray,PrimArray)
-import Data.Word (Word8,Word64)
+import Data.Coerce (coerce)
+import Data.Primitive (ByteArray(..),PrimArray(..))
+import Data.Word (Word8,Word64,Word16,Word32)
 import Data.Char (ord)
 import Data.Bytes.Types (Bytes(Bytes))
 import Data.Bytes.Parser (Slice(Slice))
 import Test.Tasty (defaultMain,testGroup,TestTree)
 import Test.Tasty.HUnit ((@=?),testCase)
 import Test.Tasty.QuickCheck ((===),testProperty)
+import System.ByteOrder (Fixed(..),ByteOrder(BigEndian,LittleEndian))
 
 import qualified Data.Bits as Bits
 import qualified Data.Bytes.Parser as P
 import qualified Data.Bytes.Parser.Ascii as Ascii
 import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.Bytes.Parser.BigEndian as BigEndian
+import qualified Data.Bytes.Parser.LittleEndian as LittleEndian
 import qualified Data.Primitive as PM
 import qualified GHC.Exts as Exts
 import qualified Test.Tasty.QuickCheck as QC
@@ -35,6 +39,51 @@ tests = testGroup "Parser"
         P.parseBytes (Latin.decStandardInt ()) str
         ===
         P.Success (Slice len 0 i)
+  , testProperty "big-endian-word16-array" $ \(xs :: [Word16]) ->
+      let src = Exts.fromList (coerce xs :: [Fixed 'BigEndian Word16])
+          res = Exts.fromList xs :: PrimArray Word16
+          sz = length xs * 2
+          bs = Bytes (Exts.fromList [0x42 :: Word8] <> untype src) 1 sz
+       in
+      P.Success (Slice (sz + 1) 0 res)
+      ===
+      P.parseBytes (BigEndian.word16Array () (length xs)) bs
+  , testProperty "big-endian-word32-array" $ \(xs :: [Word32]) ->
+      let src = Exts.fromList (coerce xs :: [Fixed 'BigEndian Word32])
+          res = Exts.fromList xs :: PrimArray Word32
+          sz = length xs * 4
+          bs = Bytes (Exts.fromList [0x42 :: Word8] <> untype src) 1 sz
+       in
+      P.Success (Slice (sz + 1) 0 res)
+      ===
+      P.parseBytes (BigEndian.word32Array () (length xs)) bs
+  , testProperty "little-endian-word32-array" $ \(xs :: [Word32]) ->
+      let src = Exts.fromList (coerce xs :: [Fixed 'LittleEndian Word32])
+          res = Exts.fromList xs :: PrimArray Word32
+          sz = length xs * 4
+          bs = Bytes (Exts.fromList [0x42 :: Word8] <> untype src) 1 sz
+       in
+      P.Success (Slice (sz + 1) 0 res)
+      ===
+      P.parseBytes (LittleEndian.word32Array () (length xs)) bs
+  , testProperty "big-endian-word64-array" $ \(xs :: [Word64]) ->
+      let src = Exts.fromList (coerce xs :: [Fixed 'BigEndian Word64])
+          res = Exts.fromList xs :: PrimArray Word64
+          sz = length xs * 8
+          bs = Bytes (Exts.fromList [0x42 :: Word8] <> untype src) 1 sz
+       in
+      P.Success (Slice (sz + 1) 0 res)
+      ===
+      P.parseBytes (BigEndian.word64Array () (length xs)) bs
+  , testProperty "little-endian-word64-array" $ \(xs :: [Word64]) ->
+      let src = Exts.fromList (coerce xs :: [Fixed 'LittleEndian Word64])
+          res = Exts.fromList xs :: PrimArray Word64
+          sz = length xs * 8
+          bs = Bytes (Exts.fromList [0x42 :: Word8] <> untype src) 1 sz
+       in
+      P.Success (Slice (sz + 1) 0 res)
+      ===
+      P.parseBytes (LittleEndian.word64Array () (length xs)) bs
   , testProperty "big-endian-word64" bigEndianWord64
   , testCase "delimit" $
       P.Success (Slice 13 0 (167,14625))
@@ -291,3 +340,6 @@ instance QC.Arbitrary LargeInteger where
 -- starts at that offset.
 withSz :: String -> (Bytes -> Int -> a) -> a
 withSz str f = f (bytes str) (length str + 1)
+
+untype :: PrimArray a -> ByteArray
+untype (PrimArray x) = ByteArray x

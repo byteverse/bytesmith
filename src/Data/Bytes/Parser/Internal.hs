@@ -8,6 +8,7 @@
 {-# language LambdaCase #-}
 {-# language MagicHash #-}
 {-# language MultiWayIf #-}
+{-# language NamedFieldPuns #-}
 {-# language PolyKinds #-}
 {-# language RankNTypes #-}
 {-# language ScopedTypeVariables #-}
@@ -32,18 +33,25 @@ module Data.Bytes.Parser.Internal
   , fail
   , indexLatinCharArray
   , upcastUnitSuccess
+    -- Swapping
+  , swapArray16
+  , swapArray32
+  , swapArray64
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
 
 import Control.Applicative (Alternative)
+import Control.Monad.ST.Run (runByteArrayST)
 import Data.Primitive (ByteArray(ByteArray))
-import Data.Bytes.Types (Bytes(Bytes))
+import Data.Bytes.Types (Bytes(..))
 import Data.Kind (Type)
+import Data.Word (Word8)
 import GHC.Exts (TYPE,RuntimeRep,Int(I#),Int#,State#,ByteArray#,Char(C#))
 
 import qualified Control.Applicative
 import qualified Control.Monad
+import qualified Data.Primitive as PM
 import qualified GHC.Exts as Exts
 
 -- | A non-resumable parser.
@@ -157,3 +165,60 @@ upcastUnitSuccess :: (# Int#, Int# #) -> Result# e ()
 {-# inline upcastUnitSuccess #-}
 upcastUnitSuccess (# b, c #) = (# | (# (), b, c #) #)
 
+swapArray16 :: Bytes -> ByteArray
+swapArray16 (Bytes{array,offset,length}) = runByteArrayST $ do
+  dst <- PM.newByteArray length
+  let go !ixSrc !ixDst !len = if len > 0
+        then do
+          let v0 = PM.indexByteArray array ixSrc :: Word8
+              v1 = PM.indexByteArray array (ixSrc + 1) :: Word8
+          PM.writeByteArray dst ixDst v1
+          PM.writeByteArray dst (ixDst + 1) v0
+          go (ixSrc + 2) (ixDst + 2) (len - 2)
+        else pure ()
+  go offset 0 length
+  PM.unsafeFreezeByteArray dst
+
+swapArray32 :: Bytes -> ByteArray
+swapArray32 (Bytes{array,offset,length}) = runByteArrayST $ do
+  dst <- PM.newByteArray length
+  let go !ixSrc !ixDst !len = if len > 0
+        then do
+          let v0 = PM.indexByteArray array ixSrc :: Word8
+              v1 = PM.indexByteArray array (ixSrc + 1) :: Word8
+              v2 = PM.indexByteArray array (ixSrc + 2) :: Word8
+              v3 = PM.indexByteArray array (ixSrc + 3) :: Word8
+          PM.writeByteArray dst ixDst v3
+          PM.writeByteArray dst (ixDst + 1) v2
+          PM.writeByteArray dst (ixDst + 2) v1
+          PM.writeByteArray dst (ixDst + 3) v0
+          go (ixSrc + 4) (ixDst + 4) (len - 4)
+        else pure ()
+  go offset 0 length
+  PM.unsafeFreezeByteArray dst
+
+swapArray64 :: Bytes -> ByteArray
+swapArray64 (Bytes{array,offset,length}) = runByteArrayST $ do
+  dst <- PM.newByteArray length
+  let go !ixSrc !ixDst !len = if len > 0
+        then do
+          let v0 = PM.indexByteArray array ixSrc :: Word8
+              v1 = PM.indexByteArray array (ixSrc + 1) :: Word8
+              v2 = PM.indexByteArray array (ixSrc + 2) :: Word8
+              v3 = PM.indexByteArray array (ixSrc + 3) :: Word8
+              v4 = PM.indexByteArray array (ixSrc + 4) :: Word8
+              v5 = PM.indexByteArray array (ixSrc + 5) :: Word8
+              v6 = PM.indexByteArray array (ixSrc + 6) :: Word8
+              v7 = PM.indexByteArray array (ixSrc + 7) :: Word8
+          PM.writeByteArray dst ixDst v7
+          PM.writeByteArray dst (ixDst + 1) v6
+          PM.writeByteArray dst (ixDst + 2) v5
+          PM.writeByteArray dst (ixDst + 3) v4
+          PM.writeByteArray dst (ixDst + 4) v3
+          PM.writeByteArray dst (ixDst + 5) v2
+          PM.writeByteArray dst (ixDst + 6) v1
+          PM.writeByteArray dst (ixDst + 7) v0
+          go (ixSrc + 8) (ixDst + 8) (len - 8)
+        else pure ()
+  go offset 0 length
+  PM.unsafeFreezeByteArray dst

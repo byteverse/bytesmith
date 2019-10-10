@@ -4,6 +4,8 @@
 
 * Add a module for little-endian word parsers. This compliments the
   existing big-endian module.
+* Add functions for parsing arrays of big/little endian words of
+  various sizes.
 
 ## 0.3.0.0 -- 2019-09-30
 

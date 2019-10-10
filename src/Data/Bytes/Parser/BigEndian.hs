@@ -28,6 +28,11 @@ module Data.Bytes.Parser.BigEndian
   , int16
   , int32
   , int64
+    -- * Many
+    -- ** Unsigned
+  , word16Array
+  , word32Array
+  , word64Array
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
@@ -36,15 +41,67 @@ import Data.Bits ((.|.),unsafeShiftL)
 import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (Parser,uneffectful)
 import Data.Bytes.Parser.Internal (InternalResult(..))
+import Data.Bytes.Parser.Internal (swapArray16,swapArray32,swapArray64)
 import Data.Word (Word8,Word16,Word32,Word64)
 import Data.Int (Int8,Int16,Int32,Int64)
+import Data.Primitive (ByteArray(..),PrimArray(..))
+import GHC.ByteOrder (ByteOrder(LittleEndian,BigEndian),targetByteOrder)
 
+import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Parser as P
 import qualified Data.Primitive as PM
 
 -- | Unsigned 8-bit word.
 word8 :: e -> Parser e s Word8
 word8 = P.any
+
+-- | Parse an array of big-endian unsigned 16-bit words. If the host is
+-- big-endian, the implementation is optimized to simply @memcpy@ bytes
+-- into the result array. The result array always has elements in
+-- native-endian byte order.
+word16Array ::
+     e -- ^ Error message if not enough bytes are present
+  -> Int -- ^ Number of big-endian 16-bit words to expect
+  -> Parser e s (PrimArray Word16) -- ^ Native-endian elements
+word16Array e !n = case targetByteOrder of
+  BigEndian -> fmap (asWord16s . Bytes.toByteArrayClone) (P.take e (n * 2))
+  LittleEndian -> do
+    bs <- P.take e (n * 2)
+    let r = swapArray16 bs
+    pure (asWord16s r)
+
+-- | Parse an array of big-endian unsigned 32-bit words.
+word32Array ::
+     e -- ^ Error message if not enough bytes are present
+  -> Int -- ^ Number of big-endian 32-bit words to expect
+  -> Parser e s (PrimArray Word32) -- ^ Native-endian elements
+word32Array e !n = case targetByteOrder of
+  BigEndian -> fmap (asWord32s . Bytes.toByteArrayClone) (P.take e (n * 4))
+  LittleEndian -> do
+    bs <- P.take e (n * 4)
+    let r = swapArray32 bs
+    pure (asWord32s r)
+
+-- | Parse an array of big-endian unsigned 64-bit words.
+word64Array ::
+     e -- ^ Error message if not enough bytes are present
+  -> Int -- ^ Number of big-endian 64-bit words to consume
+  -> Parser e s (PrimArray Word64) -- ^ Native-endian elements
+word64Array e !n = case targetByteOrder of
+  BigEndian -> fmap (asWord64s . Bytes.toByteArrayClone) (P.take e (n * 8))
+  LittleEndian -> do
+    bs <- P.take e (n * 8)
+    let r = swapArray64 bs
+    pure (asWord64s r)
+
+asWord16s :: ByteArray -> PrimArray Word16
+asWord16s (ByteArray x) = PrimArray x
+
+asWord32s :: ByteArray -> PrimArray Word32
+asWord32s (ByteArray x) = PrimArray x
+
+asWord64s :: ByteArray -> PrimArray Word64
+asWord64s (ByteArray x) = PrimArray x
 
 -- | Unsigned 16-bit word.
 word16 :: e -> Parser e s Word16
