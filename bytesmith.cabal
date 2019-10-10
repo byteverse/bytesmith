@@ -1,6 +1,6 @@
 cabal-version: 2.2
 name: bytesmith
-version: 0.3.0.0
+version: 0.3.1.0
 synopsis: Nonresumable byte parser
 description:
   Parse bytes as fast as possible. This is a nonresumable parser
@@ -20,6 +20,7 @@ library
   exposed-modules:
     Data.Bytes.Parser
     Data.Bytes.Parser.BigEndian
+    Data.Bytes.Parser.LittleEndian
     Data.Bytes.Parser.Ascii
     Data.Bytes.Parser.Latin
     Data.Bytes.Parser.Unsafe

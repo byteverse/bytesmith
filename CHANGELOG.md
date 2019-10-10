@@ -1,5 +1,10 @@
 # Revision history for bytesmith
 
+## 0.3.1.0 -- 2019-??-??
+
+* Add a module for little-endian word parsers. This compliments the
+  existing big-endian module.
+
 ## 0.3.0.0 -- 2019-09-30
 
 * Include the offset into the byte sequence in `Result`. Breaking change.
