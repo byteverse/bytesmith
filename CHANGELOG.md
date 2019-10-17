@@ -2,6 +2,7 @@
 
 ## 0.3.1.0 -- 2019-??-??
 
+* Add big-endian and little-endian parsers for `Word128`.
 * Add a module for little-endian word parsers. This compliments the
   existing big-endian module.
 * Add functions for parsing arrays of big/little endian words of

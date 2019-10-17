@@ -37,6 +37,7 @@ module Data.Bytes.Parser.Internal
   , swapArray16
   , swapArray32
   , swapArray64
+  , swapArray128
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
@@ -219,6 +220,48 @@ swapArray64 (Bytes{array,offset,length}) = runByteArrayST $ do
           PM.writeByteArray dst (ixDst + 6) v1
           PM.writeByteArray dst (ixDst + 7) v0
           go (ixSrc + 8) (ixDst + 8) (len - 8)
+        else pure ()
+  go offset 0 length
+  PM.unsafeFreezeByteArray dst
+
+swapArray128 :: Bytes -> ByteArray
+swapArray128 (Bytes{array,offset,length}) = runByteArrayST $ do
+  dst <- PM.newByteArray length
+  let go !ixSrc !ixDst !len = if len > 0
+        then do
+          let v0 = PM.indexByteArray array ixSrc :: Word8
+              v1 = PM.indexByteArray array (ixSrc + 1) :: Word8
+              v2 = PM.indexByteArray array (ixSrc + 2) :: Word8
+              v3 = PM.indexByteArray array (ixSrc + 3) :: Word8
+              v4 = PM.indexByteArray array (ixSrc + 4) :: Word8
+              v5 = PM.indexByteArray array (ixSrc + 5) :: Word8
+              v6 = PM.indexByteArray array (ixSrc + 6) :: Word8
+              v7 = PM.indexByteArray array (ixSrc + 7) :: Word8
+              v8 = PM.indexByteArray array (ixSrc + 8) :: Word8
+              v9 = PM.indexByteArray array (ixSrc + 9) :: Word8
+              v10 = PM.indexByteArray array (ixSrc + 10) :: Word8
+              v11 = PM.indexByteArray array (ixSrc + 11) :: Word8
+              v12 = PM.indexByteArray array (ixSrc + 12) :: Word8
+              v13 = PM.indexByteArray array (ixSrc + 13) :: Word8
+              v14 = PM.indexByteArray array (ixSrc + 14) :: Word8
+              v15 = PM.indexByteArray array (ixSrc + 15) :: Word8
+          PM.writeByteArray dst ixDst v15
+          PM.writeByteArray dst (ixDst + 1) v14
+          PM.writeByteArray dst (ixDst + 2) v13
+          PM.writeByteArray dst (ixDst + 3) v12
+          PM.writeByteArray dst (ixDst + 4) v11
+          PM.writeByteArray dst (ixDst + 5) v10
+          PM.writeByteArray dst (ixDst + 6) v9
+          PM.writeByteArray dst (ixDst + 7) v8
+          PM.writeByteArray dst (ixDst + 8) v7
+          PM.writeByteArray dst (ixDst + 9) v6
+          PM.writeByteArray dst (ixDst + 10) v5
+          PM.writeByteArray dst (ixDst + 11) v4
+          PM.writeByteArray dst (ixDst + 12) v3
+          PM.writeByteArray dst (ixDst + 13) v2
+          PM.writeByteArray dst (ixDst + 14) v1
+          PM.writeByteArray dst (ixDst + 15) v0
+          go (ixSrc + 16) (ixDst + 16) (len - 16)
         else pure ()
   go offset 0 length
   PM.unsafeFreezeByteArray dst

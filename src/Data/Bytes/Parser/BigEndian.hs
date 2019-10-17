@@ -23,6 +23,7 @@ module Data.Bytes.Parser.BigEndian
   , word16
   , word32
   , word64
+  , word128
     -- * Signed
   , int8
   , int16
@@ -33,18 +34,22 @@ module Data.Bytes.Parser.BigEndian
   , word16Array
   , word32Array
   , word64Array
+  , word128Array
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
 
+import Control.Applicative (liftA2)
 import Data.Bits ((.|.),unsafeShiftL)
 import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (Parser,uneffectful)
 import Data.Bytes.Parser.Internal (InternalResult(..))
 import Data.Bytes.Parser.Internal (swapArray16,swapArray32,swapArray64)
+import Data.Bytes.Parser.Internal (swapArray128)
 import Data.Word (Word8,Word16,Word32,Word64)
 import Data.Int (Int8,Int16,Int32,Int64)
 import Data.Primitive (ByteArray(..),PrimArray(..))
+import Data.WideWord (Word128(Word128))
 import GHC.ByteOrder (ByteOrder(LittleEndian,BigEndian),targetByteOrder)
 
 import qualified Data.Bytes as Bytes
@@ -94,6 +99,18 @@ word64Array e !n = case targetByteOrder of
     let r = swapArray64 bs
     pure (asWord64s r)
 
+-- | Parse an array of big-endian unsigned 128-bit words.
+word128Array ::
+     e -- ^ Error message if not enough bytes are present
+  -> Int -- ^ Number of big-endian 128-bit words to consume
+  -> Parser e s (PrimArray Word128) -- ^ Native-endian elements
+word128Array e !n = case targetByteOrder of
+  BigEndian -> fmap (asWord128s . Bytes.toByteArrayClone) (P.take e (n * 16))
+  LittleEndian -> do
+    bs <- P.take e (n * 16)
+    let r = swapArray128 bs
+    pure (asWord128s r)
+
 asWord16s :: ByteArray -> PrimArray Word16
 asWord16s (ByteArray x) = PrimArray x
 
@@ -102,6 +119,9 @@ asWord32s (ByteArray x) = PrimArray x
 
 asWord64s :: ByteArray -> PrimArray Word64
 asWord64s (ByteArray x) = PrimArray x
+
+asWord128s :: ByteArray -> PrimArray Word128
+asWord128s (ByteArray x) = PrimArray x
 
 -- | Unsigned 16-bit word.
 word16 :: e -> Parser e s Word16
@@ -157,6 +177,10 @@ word64 e = uneffectful $ \chunk -> if length chunk >= 8
           )
           (offset chunk + 8) (length chunk - 8)
   else InternalFailure e
+
+-- | Unsigned 128-bit word.
+word128 :: e -> Parser e s Word128
+word128 e = liftA2 Word128 (word64 e) (word64 e)
 
 -- | Signed 8-bit integer.
 int8 :: e -> Parser e s Int8

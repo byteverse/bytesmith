@@ -6,18 +6,22 @@
 {-# language ScopedTypeVariables #-}
 {-# language TypeApplications #-}
 
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
+import Control.Applicative (liftA2)
 import Control.Monad (replicateM)
 import Control.Monad.ST (runST)
+import Data.Bytes.Parser (Slice(Slice))
+import Data.Bytes.Types (Bytes(Bytes))
+import Data.Char (ord)
 import Data.Coerce (coerce)
 import Data.Primitive (ByteArray(..),PrimArray(..))
+import Data.WideWord (Word128(Word128))
 import Data.Word (Word8,Word64,Word16,Word32)
-import Data.Char (ord)
-import Data.Bytes.Types (Bytes(Bytes))
-import Data.Bytes.Parser (Slice(Slice))
+import System.ByteOrder (Fixed(..),ByteOrder(BigEndian,LittleEndian))
 import Test.Tasty (defaultMain,testGroup,TestTree)
 import Test.Tasty.HUnit ((@=?),testCase)
 import Test.Tasty.QuickCheck ((===),testProperty)
-import System.ByteOrder (Fixed(..),ByteOrder(BigEndian,LittleEndian))
 
 import qualified Data.Bits as Bits
 import qualified Data.Bytes.Parser as P
@@ -84,6 +88,22 @@ tests = testGroup "Parser"
       P.Success (Slice (sz + 1) 0 res)
       ===
       P.parseBytes (LittleEndian.word64Array () (length xs)) bs
+  , testProperty "little-endian-word128-array" $ \(xs :: [Word128]) ->
+      let src = Exts.fromList xs
+          sz = length xs * 16
+          bs = Bytes (Exts.fromList [0x42 :: Word8] <> untype src) 1 sz
+       in
+      P.parseBytes (replicateM (length xs) (LittleEndian.word128 ())) bs
+      ===
+      P.parseBytes (fmap Exts.toList (LittleEndian.word128Array () (length xs))) bs
+  , testProperty "big-endian-word128-array" $ \(xs :: [Word128]) ->
+      let src = Exts.fromList xs
+          sz = length xs * 16
+          bs = Bytes (Exts.fromList [0x42 :: Word8] <> untype src) 1 sz
+       in
+      P.parseBytes (replicateM (length xs) (BigEndian.word128 ())) bs
+      ===
+      P.parseBytes (fmap Exts.toList (BigEndian.word128Array () (length xs))) bs
   , testProperty "big-endian-word64" bigEndianWord64
   , testCase "delimit" $
       P.Success (Slice 13 0 (167,14625))
@@ -325,6 +345,9 @@ bigEndianWord64 a b c d e f g h =
 newtype LargeInteger = LargeInteger Integer
   deriving (Eq,Show)
 
+instance QC.Arbitrary Word128 where
+  arbitrary = liftA2 Word128 QC.arbitrary QC.arbitrary
+
 instance QC.Arbitrary LargeInteger where
   arbitrary = do
       n <- QC.choose (1, 27)
@@ -343,3 +366,5 @@ withSz str f = f (bytes str) (length str + 1)
 
 untype :: PrimArray a -> ByteArray
 untype (PrimArray x) = ByteArray x
+
+
