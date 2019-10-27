@@ -105,6 +105,8 @@ tests = testGroup "Parser"
       ===
       P.parseBytes (fmap Exts.toList (BigEndian.word128Array () (length xs))) bs
   , testProperty "big-endian-word64" bigEndianWord64
+  , testProperty "big-endian-word32" bigEndianWord32
+  , testProperty "little-endian-word32" littleEndianWord32
   , testCase "delimit" $
       P.Success (Slice 13 0 (167,14625))
       @=?
@@ -339,6 +341,52 @@ bigEndianWord64 a b c d e f g h =
    in P.parseBytes (BigEndian.word64 ()) (Bytes arr 2 9)
       ===
       P.Success (Slice 10 1 expected)
+
+bigEndianWord32 ::
+     Word8 -> Word8 -> Word8 -> Word8
+  -> QC.Property
+bigEndianWord32 a b c d =
+  let arr = runST $ do
+        m <- PM.newByteArray 7
+        PM.writeByteArray m 0 (0xFF :: Word8)
+        PM.writeByteArray m 1 (0xFF :: Word8)
+        PM.writeByteArray m 2 (a :: Word8)
+        PM.writeByteArray m 3 (b :: Word8)
+        PM.writeByteArray m 4 (c :: Word8)
+        PM.writeByteArray m 5 (d :: Word8)
+        PM.writeByteArray m 6 (0xEE :: Word8)
+        PM.unsafeFreezeByteArray m
+      expected = (0 :: Word32)
+        + fromIntegral a * 256 ^ (3 :: Integer)
+        + fromIntegral b * 256 ^ (2 :: Integer)
+        + fromIntegral c * 256 ^ (1 :: Integer)
+        + fromIntegral d * 256 ^ (0 :: Integer)
+   in P.parseBytes (BigEndian.word32 ()) (Bytes arr 2 5)
+      ===
+      P.Success (Slice 6 1 expected)
+
+littleEndianWord32 ::
+     Word8 -> Word8 -> Word8 -> Word8
+  -> QC.Property
+littleEndianWord32 a b c d =
+  let arr = runST $ do
+        m <- PM.newByteArray 7
+        PM.writeByteArray m 0 (0xFF :: Word8)
+        PM.writeByteArray m 1 (0xFF :: Word8)
+        PM.writeByteArray m 2 (a :: Word8)
+        PM.writeByteArray m 3 (b :: Word8)
+        PM.writeByteArray m 4 (c :: Word8)
+        PM.writeByteArray m 5 (d :: Word8)
+        PM.writeByteArray m 6 (0xEE :: Word8)
+        PM.unsafeFreezeByteArray m
+      expected = (0 :: Word32)
+        + fromIntegral a * 256 ^ (0 :: Integer)
+        + fromIntegral b * 256 ^ (1 :: Integer)
+        + fromIntegral c * 256 ^ (2 :: Integer)
+        + fromIntegral d * 256 ^ (3 :: Integer)
+   in P.parseBytes (LittleEndian.word32 ()) (Bytes arr 2 5)
+      ===
+      P.Success (Slice 6 1 expected)
 
 -- The Arbitrary instance for Integer that comes with
 -- QuickCheck only generates small numbers.
