@@ -33,6 +33,7 @@ module Data.Bytes.Parser.Ascii
   , opt
     -- * Match Many
   , shortTrailedBy
+  , takeShortWhile
     -- * Skip
   , Latin.skipDigits
   , Latin.skipDigits1
@@ -41,6 +42,7 @@ module Data.Bytes.Parser.Ascii
   , skipAlpha
   , skipAlpha1
   , skipTrailedBy
+  , skipWhile
     -- * Numbers
   , Latin.decWord
   , Latin.decWord8
@@ -57,6 +59,7 @@ import Data.Word (Word8)
 import Data.Text.Short (ShortText)
 import Control.Monad.ST.Run (runByteArrayST)
 import GHC.Exts (Int(I#),Char(C#),Int#,Char#,(-#),(+#),(<#),ord#,indexCharArray#,chr#)
+import GHC.Exts (gtChar#)
 
 import qualified Data.ByteString.Short.Internal as BSS
 import qualified Data.Text.Short.Unsafe as TS
@@ -76,6 +79,26 @@ skipTrailedBy e !c = do
           then pure ()
           else go
   go
+
+-- | Consume characters matching the predicate. The stops when it
+-- encounters a non-matching character or when it encounters a byte
+-- above @0x7F@. This never fails.
+takeShortWhile :: (Char -> Bool) -> Parser e s ShortText
+{-# inline takeShortWhile #-}
+takeShortWhile p = do
+  !start <- Unsafe.cursor
+  skipWhile p
+  end <- Unsafe.cursor
+  src <- Unsafe.expose
+  let len = end - start
+      !r = runByteArrayST $ do
+        marr <- PM.newByteArray len
+        PM.copyByteArray marr 0 src start len
+        PM.unsafeFreezeByteArray marr
+  pure
+    $ TS.fromShortByteStringUnsafe
+    $ byteArrayToShortByteString
+    $ r
 
 -- | Consume input through the next occurrence of the target
 -- character and return the consumed input, excluding the
@@ -154,6 +177,24 @@ opt e = uneffectful $ \chunk -> if length chunk > 0
                  (length chunk - 1)
           else InternalFailure e
   else InternalSuccess Nothing (offset chunk) (length chunk)
+
+-- | Consume characters matching the predicate. The stops when it
+-- encounters a non-matching character or when it encounters a byte
+-- above @0x7F@. This never fails.
+skipWhile :: (Char -> Bool) -> Parser e s ()
+{-# inline skipWhile #-}
+skipWhile p = Parser
+  ( \(# arr, off0, len0 #) s0 ->
+    let go off len = case len of
+          0# -> (# (), off, 0# #)
+          _ -> let c = indexCharArray# arr off in
+            case p (C# c) of
+              True -> case gtChar# c '\x7F'# of
+                1# -> (# (), off, len #)
+                _ -> go (off +# 1# ) (len -# 1# )
+              False -> (# (), off, len #)
+     in (# s0, (# | go off0 len0 #) #)
+  )
 
 -- | Skip uppercase and lowercase letters until a non-alpha
 -- character is encountered.

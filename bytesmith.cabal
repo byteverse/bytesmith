@@ -56,6 +56,7 @@ test-suite test
     , tasty
     , tasty-quickcheck
     , byte-order
+    , text-short
     , wide-word
 
 benchmark bench

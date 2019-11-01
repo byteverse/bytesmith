@@ -16,6 +16,7 @@ import Data.Bytes.Types (Bytes(Bytes))
 import Data.Char (ord)
 import Data.Coerce (coerce)
 import Data.Primitive (ByteArray(..),PrimArray(..))
+import Data.Text.Short (ShortText)
 import Data.WideWord (Word128(Word128))
 import Data.Word (Word8,Word64,Word16,Word32)
 import System.ByteOrder (Fixed(..),ByteOrder(BigEndian,LittleEndian))
@@ -302,6 +303,12 @@ tests = testGroup "Parser"
       P.parseBytes
         (P.replicate 2 (Ascii.decWord () <* Ascii.char () '.'))
         (bytes "42.93.")
+  , testCase "ascii-takeShortWhile" $
+      P.Success (Slice 11 0 (Exts.fromList ["the","world"] :: PM.Array ShortText))
+      @=?
+      P.parseBytes
+        (P.replicate 2 (Ascii.takeShortWhile (/=',') <* Ascii.char () ','))
+        (bytes "the,world,")
   ]
 
 bytes :: String -> Bytes
