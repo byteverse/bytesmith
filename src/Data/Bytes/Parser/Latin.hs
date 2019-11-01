@@ -26,6 +26,9 @@ module Data.Bytes.Parser.Latin
   , char2
   , char3
   , char4
+  , char5
+  , char6
+  , char7
     -- ** Try
   , trySatisfy
   , trySatisfyThen
@@ -129,7 +132,7 @@ char e !c = uneffectful $ \chunk -> if length chunk > 0
   else InternalFailure e
 
 -- | Consume the next two characters, failing if they do
--- not match they expected values.
+-- not match the expected values.
 --
 -- > char2 e a b === char e a *> char e b
 char2 :: e -> Char -> Char -> Parser e s ()
@@ -141,8 +144,8 @@ char2 e !c0 !c1 = uneffectful $ \chunk ->
          -> InternalSuccess () (offset chunk + 2) (length chunk - 2)
      | otherwise -> InternalFailure e
 
--- | Consume the three characters, failing if they do
--- not match they expected values.
+-- | Consume three characters, failing if they do
+-- not match the expected values.
 --
 -- > char3 e a b c === char e a *> char e b *> char e c
 char3 :: e -> Char -> Char -> Char -> Parser e s ()
@@ -155,8 +158,8 @@ char3 e !c0 !c1 !c2 = uneffectful $ \chunk ->
          -> InternalSuccess () (offset chunk + 3) (length chunk - 3)
      | otherwise -> InternalFailure e
 
--- | Consume the four characters, failing if they do
--- not match they expected values.
+-- | Consume four characters, failing if they do
+-- not match the expected values.
 --
 -- > char4 e a b c d === char e a *> char e b *> char e c *> char e d
 char4 :: e -> Char -> Char -> Char -> Char -> Parser e s ()
@@ -168,6 +171,48 @@ char4 e !c0 !c1 !c2 !c3 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk + 2) == c2
      , indexLatinCharArray (array chunk) (offset chunk + 3) == c3
          -> InternalSuccess () (offset chunk + 4) (length chunk - 4)
+     | otherwise -> InternalFailure e
+
+-- | Consume five characters, failing if they do
+-- not match the expected values.
+char5 :: e -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+char5 e !c0 !c1 !c2 !c3 !c4 = uneffectful $ \chunk ->
+  if | length chunk > 4
+     , indexLatinCharArray (array chunk) (offset chunk) == c0
+     , indexLatinCharArray (array chunk) (offset chunk + 1) == c1
+     , indexLatinCharArray (array chunk) (offset chunk + 2) == c2
+     , indexLatinCharArray (array chunk) (offset chunk + 3) == c3
+     , indexLatinCharArray (array chunk) (offset chunk + 4) == c4
+         -> InternalSuccess () (offset chunk + 5) (length chunk - 5)
+     | otherwise -> InternalFailure e
+
+-- | Consume six characters, failing if they do
+-- not match the expected values.
+char6 :: e -> Char -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+char6 e !c0 !c1 !c2 !c3 !c4 !c5 = uneffectful $ \chunk ->
+  if | length chunk > 5
+     , indexLatinCharArray (array chunk) (offset chunk) == c0
+     , indexLatinCharArray (array chunk) (offset chunk + 1) == c1
+     , indexLatinCharArray (array chunk) (offset chunk + 2) == c2
+     , indexLatinCharArray (array chunk) (offset chunk + 3) == c3
+     , indexLatinCharArray (array chunk) (offset chunk + 4) == c4
+     , indexLatinCharArray (array chunk) (offset chunk + 5) == c5
+         -> InternalSuccess () (offset chunk + 6) (length chunk - 6)
+     | otherwise -> InternalFailure e
+
+-- | Consume seven characters, failing if they do
+-- not match the expected values.
+char7 :: e -> Char -> Char -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+char7 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 = uneffectful $ \chunk ->
+  if | length chunk > 6
+     , indexLatinCharArray (array chunk) (offset chunk) == c0
+     , indexLatinCharArray (array chunk) (offset chunk + 1) == c1
+     , indexLatinCharArray (array chunk) (offset chunk + 2) == c2
+     , indexLatinCharArray (array chunk) (offset chunk + 3) == c3
+     , indexLatinCharArray (array chunk) (offset chunk + 4) == c4
+     , indexLatinCharArray (array chunk) (offset chunk + 5) == c5
+     , indexLatinCharArray (array chunk) (offset chunk + 6) == c6
+         -> InternalSuccess () (offset chunk + 7) (length chunk - 7)
      | otherwise -> InternalFailure e
 
 -- | Consumes and returns the next character in the input.

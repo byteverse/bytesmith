@@ -8,6 +8,7 @@
 * Add functions for parsing arrays of big/little endian words of
   various sizes.
 * Add `skipUntil` to `Latin`.
+* Add `char5`, `char6`, and `char7` to `Latin`.
 
 ## 0.3.0.0 -- 2019-09-30
 
