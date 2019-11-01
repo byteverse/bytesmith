@@ -39,6 +39,7 @@ module Data.Bytes.Parser.Latin
   , skipChar
   , skipChar1
   , skipTrailedBy
+  , skipUntil
     -- * Numbers
     -- ** Decimal
     -- *** Unsigned
@@ -672,26 +673,51 @@ upcastIntResult (# | (# a, b, c #) #) = (# | (# I# a, b, c #) #)
 char2Word :: Char -> Word
 char2Word = fromIntegral . ord
 
--- | Skip all characters until the character from the is encountered
+-- | Skip all characters until the terminator is encountered
 -- and then consume the matching character as well. Visually,
 -- @skipTrailedBy \'C\'@ advances the cursor like this:
 -- 
 -- >  A Z B Y C X C W
 -- > |->->->->-|
+--
+-- This fails if it reaches the end of input without encountering
+-- the character.
 skipTrailedBy :: e -> Char -> Parser e s ()
 skipTrailedBy e !w = uneffectful# $ \c ->
   skipUntilConsumeLoop e w c
+
+-- | Skip all characters until the terminator is encountered.
+-- This does not consume the terminator. Visually, @skipUntil \'C\'@
+-- advances the cursor like this:
+-- 
+-- >  A Z B Y C X C W
+-- > |->->->-|
+--
+-- This succeeds if it reaches the end of the input without
+-- encountering the terminator. It never fails.
+skipUntil :: Char -> Parser e s ()
+skipUntil !w = uneffectful# $ \c -> skipUntilLoop w c
+
+skipUntilLoop ::
+     Char -- byte to match
+  -> Bytes -- Chunk
+  -> Result# e ()
+skipUntilLoop !w !c = case length c of
+  0 -> (# | (# (), unI (offset c), 0# #) #)
+  _ -> if indexLatinCharArray (array c) (offset c) /= w
+    then skipUntilLoop w (Bytes.unsafeDrop 1 c)
+    else (# | (# (), unI (offset c), unI (length c) #) #)
 
 skipUntilConsumeLoop ::
      e -- Error message
   -> Char -- byte to match
   -> Bytes -- Chunk
   -> Result# e ()
-skipUntilConsumeLoop e !w !c = if length c > 0
-  then if indexLatinCharArray (array c) (offset c) /= w
+skipUntilConsumeLoop e !w !c = case length c of
+  0 -> (# e | #)
+  _ -> if indexLatinCharArray (array c) (offset c) /= w
     then skipUntilConsumeLoop e w (Bytes.unsafeDrop 1 c)
     else (# | (# (), unI (offset c + 1), unI (length c - 1) #) #)
-  else (# e | #)
 
 -- | Parse exactly four ASCII-encoded characters, interpretting
 -- them as the hexadecimal encoding of a 32-bit number. Note that
