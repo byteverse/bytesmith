@@ -8,7 +8,9 @@
 * Add functions for parsing arrays of big/little endian words of
   various sizes.
 * Add `skipUntil` to `Latin`.
-* Add `char5`, `char6`, and `char7` to `Latin`.
+* Add `char5`, `char6`, `char7`, `char8`, `char9`, `char10`, and
+  `char11` to `Latin`.
+* Correct the implementation of `takeTrailedBy`.
 
 ## 0.3.0.0 -- 2019-09-30
 

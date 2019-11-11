@@ -201,7 +201,7 @@ takeTrailedBy e !w = do
   skipTrailedBy e w
   !end <- cursor
   !arr <- expose
-  pure (Bytes arr start (end - start))
+  pure (Bytes arr start (end - (start + 1)))
 
 -- | Skip all characters until the character from the is encountered
 -- and then consume the matching byte as well.
