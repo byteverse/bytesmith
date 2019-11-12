@@ -1,6 +1,6 @@
 # Revision history for bytesmith
 
-## 0.3.1.0 -- 2019-??-??
+## 0.3.1.0 -- 2019-11-12
 
 * Add big-endian and little-endian parsers for `Word128`.
 * Add a module for little-endian word parsers. This compliments the
