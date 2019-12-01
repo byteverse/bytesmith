@@ -26,9 +26,12 @@ module Data.Bytes.Parser
   , Result(..)
   , Slice(..)
     -- * Run Parsers
+    -- ** Result
   , parseByteArray
   , parseBytes
   , parseBytesEffectfully
+    -- ** Result
+  , parseBytesEither
     -- * One Byte
   , any
     -- * Many Bytes
@@ -99,7 +102,7 @@ import qualified Data.Bytes as B
 import qualified Data.Primitive as PM
 import qualified Data.Primitive.Contiguous as C
 
--- | Parse a slice of a byte array. This can succeed even if the
+-- | Parse a byte sequence. This can succeed even if the
 -- entire slice was not consumed by the parser.
 parseBytes :: forall e a. (forall s. Parser e s a) -> Bytes -> Result e a
 parseBytes p !b = runResultST action
@@ -107,6 +110,22 @@ parseBytes p !b = runResultST action
   action :: forall s. ST# s (Result# e a)
   action s0 = case p @s of
     Parser f -> f (unboxBytes b) s0
+
+-- | Variant of 'parseBytes' that discards the new offset and the
+-- remaining length. This does not, however, require the remaining
+-- length to be zero. Use 'endOfInput' to accomplish that.
+parseBytesEither :: forall e a. (forall s. Parser e s a) -> Bytes -> Either e a
+parseBytesEither p !b = runEitherST action
+  where
+  action :: forall s. ST# s (Result# e a)
+  action s0 = case p @s of
+    Parser f -> f (unboxBytes b) s0
+
+-- Similar to runResultST
+runEitherST :: (forall s. ST# s (Result# e x)) -> Either e x
+runEitherST f = case (runRW# (\s0 -> case f s0 of { (# _, r #) -> r })) of
+  (# e | #) -> Left e
+  (# | (# x, _, _ #) #) -> Right x
 
 -- This is used internally to help reduce boxing when a parser
 -- gets run. Due to the late inlining of runRW#, this variant

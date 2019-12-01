@@ -1,5 +1,9 @@
 # Revision history for bytesmith
 
+## 0.3.2.0 -- 2019-??-??
+
+* Add `parseBytesEither`.
+
 ## 0.3.1.0 -- 2019-11-12
 
 * Add big-endian and little-endian parsers for `Word128`.
