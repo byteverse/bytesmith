@@ -34,6 +34,7 @@ module Data.Bytes.Parser
   , parseBytesEither
     -- * One Byte
   , any
+  , anyBut
     -- * Many Bytes
   , take
   , takeWhile
@@ -44,10 +45,17 @@ module Data.Bytes.Parser
     -- * Match
   , byteArray
   , bytes
+  , satisfy
+  , satisfyWith
     -- * End of Input
   , endOfInput
   , isEndOfInput
   , remaining
+    -- * Scanning
+  , scan
+    -- * Lookahead
+  , peek
+  , peek'
     -- * Control Flow
   , fail
   , orElse
@@ -191,6 +199,58 @@ any e = uneffectful $ \chunk -> if length chunk > 0
      in InternalSuccess w (offset chunk + 1) (length chunk - 1)
   else InternalFailure e
 
+-- | Match any byte except the given one.
+anyBut :: e -> Word8 -> Parser e s Word8
+anyBut e g = uneffectful $ \chunk -> if length chunk > 0
+  then case B.unsafeIndex chunk 1 of
+    w -> if w == g
+      then InternalFailure e
+      else InternalSuccess w (offset chunk + 1) (length chunk - 1)
+  else InternalFailure e
+
+-- | Match any byte, to perform lookahead. Returns 'Nothing' if
+--   end of input has been reached. Does not consume any input.
+--
+--   /Note/: Because this parser does not fail, do not use it
+--   with combinators such as 'many', because such as 'many',
+--   because such parsers loop until a failure occurs. Careless
+--   use will thus result in an infinite loop.
+peek :: Parser e s (Maybe Word8)
+peek = uneffectful $ \chunk ->
+  let v = if length chunk > 0
+        then Just (B.unsafeIndex chunk 1)
+        else Nothing
+  in InternalSuccess v (offset chunk) (length chunk)
+
+-- | Match any byte, to perform lookahead. Does not consume any
+--   input, but will fail if end of input has been reached.
+peek' :: e -> Parser e s Word8
+peek' e = uneffectful $ \chunk -> if length chunk > 0
+  then InternalSuccess (B.unsafeIndex chunk 1) (offset chunk) (length chunk)
+  else InternalFailure e
+
+-- | A stateful scanner. The predicate consumes and transforms a
+--   state argument, and each transformed state is passed to
+--   successive invocations of the predicate on each byte of the input
+--   until one returns 'Nothing' or the input ends.
+--
+--   This parser does not fail. It will return the initial state
+--   if the predicate returns 'Nothing' on the first byte of input.
+--
+--   /Note/: Because this parser does not fail, do not use it with
+--   combinators such a 'many', because such parsers loop until a
+--   failure occurs. Careless use will thus result in an infinite loop.
+scan :: state -> (state -> Word8 -> Maybe state) -> Parser e s state
+scan s0 t = do
+  let go s = do
+        mw <- peek
+        case mw of
+          Nothing -> pure s
+          Just w -> case t s w of
+            Just s' -> go s'
+            Nothing -> pure s
+  go s0
+
 -- Interpret the next byte as an ASCII-encoded character.
 -- Does not check to see if any characters are left. This
 -- is not exported.
@@ -265,6 +325,23 @@ skipWhile f = go where
         then go
         else unconsume 1
 
+-- | The parser @satisfy p@ succeeds for any byte for which the
+--   predicate @p@ returns 'True'. Returns the byte that is
+--   actually parsed.
+satisfy :: e -> (Word8 -> Bool) -> Parser e s Word8
+satisfy e p = satisfyWith e id p
+{-# inline satisfy #-}
+
+-- | The parser @satisfyWith f p@ transforms a byte, and succeeds
+--   if the predicate @p@ returns 'True' on the transformed value.
+--   The parser returns the transformed byte that was parsed.
+satisfyWith :: e -> (Word8 -> a) -> (a -> Bool) -> Parser e s Word8
+satisfyWith e f p = uneffectful $ \chunk -> if length chunk > 1
+  then case B.unsafeIndex chunk 1 of
+    w -> if p (f w)
+      then InternalSuccess w (offset chunk + 1) (length chunk - 1)
+      else InternalFailure e
+  else InternalFailure e
 
 -- | Fails if there is still more input remaining.
 endOfInput :: e -> Parser e s ()
