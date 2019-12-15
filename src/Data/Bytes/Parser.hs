@@ -200,6 +200,7 @@ any e = uneffectful $ \chunk -> if length chunk > 0
   else InternalFailure e
 
 -- | Match any byte except the given one.
+--   Fails if no characters are left.
 anyBut :: e -> Word8 -> Parser e s Word8
 anyBut e g = uneffectful $ \chunk -> if length chunk > 0
   then case B.unsafeIndex chunk 1 of
