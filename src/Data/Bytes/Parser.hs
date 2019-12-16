@@ -34,7 +34,6 @@ module Data.Bytes.Parser
   , parseBytesEither
     -- * One Byte
   , any
-  , anyBut
     -- * Many Bytes
   , take
   , takeWhile
@@ -197,16 +196,6 @@ any e = uneffectful $ \chunk -> if length chunk > 0
   then
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
      in InternalSuccess w (offset chunk + 1) (length chunk - 1)
-  else InternalFailure e
-
--- | Match any byte except the given one.
---   Fails if no characters are left.
-anyBut :: e -> Word8 -> Parser e s Word8
-anyBut e g = uneffectful $ \chunk -> if length chunk > 0
-  then case B.unsafeIndex chunk 1 of
-    w -> if w == g
-      then InternalFailure e
-      else InternalSuccess w (offset chunk + 1) (length chunk - 1)
   else InternalFailure e
 
 -- | Match any byte, to perform lookahead. Returns 'Nothing' if
