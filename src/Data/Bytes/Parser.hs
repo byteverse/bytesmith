@@ -336,12 +336,14 @@ satisfy e p = satisfyWith e id p
 -- | The parser @satisfyWith f p@ transforms a byte, and succeeds
 --   if the predicate @p@ returns 'True' on the transformed value.
 --   The parser returns the transformed byte that was parsed.
-satisfyWith :: e -> (Word8 -> a) -> (a -> Bool) -> Parser e s Word8
+satisfyWith :: e -> (Word8 -> a) -> (a -> Bool) -> Parser e s a
 satisfyWith e f p = uneffectful $ \chunk -> if length chunk > 1
   then case B.unsafeIndex chunk 1 of
-    w -> if p (f w)
-      then InternalSuccess w (offset chunk + 1) (length chunk - 1)
-      else InternalFailure e
+    w ->
+      let v = f w
+      in if p v
+        then InternalSuccess v (offset chunk + 1) (length chunk - 1)
+        else InternalFailure e
   else InternalFailure e
 
 -- | Fails if there is still more input remaining.
