@@ -3,6 +3,8 @@
 ## 0.3.2.0 -- 2019-??-??
 
 * Add `parseBytesEither` and `parseBytesMaybe`.
+* Add common idioms from other parser libaries. This includes: `satisfy`,
+  `satisfyWith`, `scan`, `peek`, and `peek'`.
 
 ## 0.3.1.0 -- 2019-11-12
 
