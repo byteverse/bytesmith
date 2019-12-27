@@ -30,8 +30,8 @@ module Data.Bytes.Parser
   , parseByteArray
   , parseBytes
   , parseBytesEffectfully
-    -- ** Result
   , parseBytesEither
+  , parseBytesMaybe
     -- * One Byte
   , any
     -- * Many Bytes
@@ -118,6 +118,16 @@ parseBytes p !b = runResultST action
   action s0 = case p @s of
     Parser f -> f (unboxBytes b) s0
 
+-- | Variant of 'parseBytesEither' that discards the error message on failure.
+-- Just like 'parseBytesEither', this does not impose any checks on the length
+-- of the remaining input.
+parseBytesMaybe :: forall e a. (forall s. Parser e s a) -> Bytes -> Maybe a
+parseBytesMaybe p !b = runMaybeST action
+  where
+  action :: forall s. ST# s (Result# e a)
+  action s0 = case p @s of
+    Parser f -> f (unboxBytes b) s0
+
 -- | Variant of 'parseBytes' that discards the new offset and the
 -- remaining length. This does not, however, require the remaining
 -- length to be zero. Use 'endOfInput' to accomplish that.
@@ -127,6 +137,12 @@ parseBytesEither p !b = runEitherST action
   action :: forall s. ST# s (Result# e a)
   action s0 = case p @s of
     Parser f -> f (unboxBytes b) s0
+
+-- Similar to runResultST
+runMaybeST :: (forall s. ST# s (Result# e x)) -> Maybe x
+runMaybeST f = case (runRW# (\s0 -> case f s0 of { (# _, r #) -> r })) of
+  (# _ | #) -> Nothing
+  (# | (# x, _, _ #) #) -> Just x
 
 -- Similar to runResultST
 runEitherST :: (forall s. ST# s (Result# e x)) -> Either e x

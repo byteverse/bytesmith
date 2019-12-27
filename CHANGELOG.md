@@ -2,7 +2,7 @@
 
 ## 0.3.2.0 -- 2019-??-??
 
-* Add `parseBytesEither`.
+* Add `parseBytesEither` and `parseBytesMaybe`.
 
 ## 0.3.1.0 -- 2019-11-12
 
