@@ -66,7 +66,13 @@ module Data.Bytes.Parser.Latin
   , decUnsignedInteger
   , decTrailingInteger
     -- ** Hexadecimal
+    -- *** Variable Length
+  , hexWord8
+  , hexWord16
+    -- *** Fixed Length
+  , hexFixedWord8
   , hexFixedWord16
+    -- *** Digit
   , hexNibbleLower
   , tryHexNibbleLower
   , hexNibble
@@ -398,6 +404,26 @@ decWord8 e = Parser
     (# s1, r #) -> (# s1, upcastWord8Result r #)
   )
 
+-- | Parse a hexadecimal-encoded 8-bit word. If the number is larger
+-- than 255, this parser fails. This allows leading zeroes and is
+-- insensitive to case. For example, @00A@, @0a@ and @A@ would all
+-- be accepted as the same number.
+hexWord8 :: e -> Parser e s Word8
+hexWord8 e = Parser
+  (\chunk0 s0 -> case hexSmallWordStart e 256 (boxBytes chunk0) s0 of
+    (# s1, r #) -> (# s1, upcastWord8Result r #)
+  )
+
+-- | Parse a hexadecimal-encoded 16-bit word. If the number is larger
+-- than 65535, this parser fails. This allows leading zeroes and is
+-- insensitive to case. For example, @0100a@ and @100A@ would both
+-- be accepted as the same number.
+hexWord16 :: e -> Parser e s Word16
+hexWord16 e = Parser
+  (\chunk0 s0 -> case hexSmallWordStart e 65536 (boxBytes chunk0) s0 of
+    (# s1, r #) -> (# s1, upcastWord16Result r #)
+  )
+
 -- | Parse a decimal-encoded 16-bit word. If the number is larger
 -- than 65535, this parser fails.
 decWord16 :: e -> Parser e s Word16
@@ -433,6 +459,17 @@ decWord64 e = Parser
   (\chunk0 s0 -> case decWordStart e (boxBytes chunk0) s0 of
     (# s1, r #) -> (# s1, upcastWord64Result r #)
   )
+
+hexSmallWordStart ::
+     e -- Error message
+  -> Word -- Upper Bound
+  -> Bytes -- Chunk
+  -> ST# s (Result# e Word# )
+hexSmallWordStart e !limit !chunk0 s0 = if length chunk0 > 0
+  then case oneHexMaybe (PM.indexByteArray (array chunk0) (offset chunk0)) of
+    Nothing -> (# s0, (# e | #) #)
+    Just w -> (# s0, hexSmallWordMore e w limit (Bytes.unsafeDrop 1 chunk0) #)
+  else (# s0, (# e | #) #)
 
 decSmallWordStart ::
      e -- Error message
@@ -478,6 +515,21 @@ upcastWordResult (# | (# a, b, c #) #) = (# | (# W# a, b, c #) #)
 upcastWord64Result :: Result# e Word# -> Result# e Word64
 upcastWord64Result (# e | #) = (# e | #)
 upcastWord64Result (# | (# a, b, c #) #) = (# | (# W64# a, b, c #) #)
+
+hexSmallWordMore ::
+     e -- Error message
+  -> Word -- Accumulator
+  -> Word -- Upper Bound
+  -> Bytes -- Chunk
+  -> Result# e Word#
+hexSmallWordMore e !acc !limit !chunk0 = if length chunk0 > 0
+  then case oneHexMaybe (PM.indexByteArray (array chunk0) (offset chunk0)) of
+    Nothing -> (# | (# unW acc, unI (offset chunk0), unI (length chunk0)  #) #)
+    Just w -> let w' = acc * 16 + w in
+      if w' < limit
+        then hexSmallWordMore e w' limit (Bytes.unsafeDrop 1 chunk0)
+        else (# e | #)
+  else (# | (# unW acc, unI (offset chunk0), 0# #) #)
 
 decSmallWordMore ::
      e -- Error message
@@ -842,7 +894,7 @@ skipUntilConsumeLoop e !w !c = case length c of
     else (# | (# (), unI (offset c + 1), unI (length c - 1) #) #)
 
 -- | Parse exactly four ASCII-encoded characters, interpretting
--- them as the hexadecimal encoding of a 32-bit number. Note that
+-- them as the hexadecimal encoding of a 16-bit number. Note that
 -- this rejects a sequence such as @5A9@, requiring @05A9@ instead.
 -- This is insensitive to case. This is particularly useful when
 -- parsing escape sequences in C or JSON, which allow encoding
@@ -872,6 +924,34 @@ hexFixedWord16# e = uneffectfulWord# $ \chunk -> if length chunk >= 4
                    n3
                 ,  unI (offset chunk) +# 4#
                 ,  unI (length chunk) -# 4# #) #)
+           | otherwise -> (# e | #)
+  else (# e | #)
+
+-- | Parse exactly two ASCII-encoded characters, interpretting
+-- them as the hexadecimal encoding of a 8-bit number. Note that
+-- this rejects a sequence such as @A@, requiring @0A@ instead.
+-- This is insensitive to case.
+hexFixedWord8 :: e -> Parser e s Word8
+{-# inline hexFixedWord8 #-}
+hexFixedWord8 e = Parser
+  (\x s0 -> case runParser (hexFixedWord8# e) x s0 of
+    (# s1, r #) -> case r of
+      (# err | #) -> (# s1, (# err | #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W8# a, b, c #) #) #)
+  )
+
+hexFixedWord8# :: e -> Parser e s Word#
+{-# noinline hexFixedWord8# #-}
+hexFixedWord8# e = uneffectfulWord# $ \chunk -> if length chunk >= 2
+  then
+    let !w0@(W# n0) = oneHex $ PM.indexByteArray (array chunk) (offset chunk)
+        !w1@(W# n1) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 1)
+     in if | w0 .|. w1 /= maxBound ->
+             (# |
+                (# (n0 `Exts.timesWord#` 16##) `Exts.plusWord#`
+                   n1
+                ,  unI (offset chunk) +# 2#
+                ,  unI (length chunk) -# 2# #) #)
            | otherwise -> (# e | #)
   else (# e | #)
 
@@ -935,6 +1015,14 @@ oneHex w
   | w >= 65 && w < 71 = (fromIntegral w - 55)
   | w >= 97 && w < 103 = (fromIntegral w - 87)
   | otherwise = maxBound
+
+oneHexMaybe :: Word8 -> Maybe Word
+{-# inline oneHexMaybe #-}
+oneHexMaybe w
+  | w >= 48 && w < 58 = Just (fromIntegral w - 48)
+  | w >= 65 && w < 71 = Just (fromIntegral w - 55)
+  | w >= 97 && w < 103 = Just (fromIntegral w - 87)
+  | otherwise = Nothing
 
 uneffectfulWord# :: (Bytes -> Result# e Word#) -> Parser e s Word#
 uneffectfulWord# f = Parser

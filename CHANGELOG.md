@@ -5,6 +5,7 @@
 * Add `parseBytesEither` and `parseBytesMaybe`.
 * Add common idioms from other parser libaries. This includes: `satisfy`,
   `satisfyWith`, `scan`, `peek`, and `peek'`.
+* Add `hexWord8`, `hexWord16`, and `hexFixedWord8`.
 
 ## 0.3.1.0 -- 2019-11-12
 
