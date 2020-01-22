@@ -1,6 +1,6 @@
 # Revision history for bytesmith
 
-## 0.3.3.0 -- 2020-??-??
+## 0.3.3.0 -- 2020-01-22
 * Add `hexWord8`, `hexWord16`, and `hexFixedWord8`.
 
 ## 0.3.2.0 -- 2019-12-27
