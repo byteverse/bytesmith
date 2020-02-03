@@ -72,6 +72,7 @@ module Data.Bytes.Parser.Latin
     -- *** Fixed Length
   , hexFixedWord8
   , hexFixedWord16
+  , hexFixedWord32
     -- *** Digit
   , hexNibbleLower
   , tryHexNibbleLower
@@ -892,6 +893,43 @@ skipUntilConsumeLoop e !w !c = case length c of
   _ -> if indexLatinCharArray (array c) (offset c) /= w
     then skipUntilConsumeLoop e w (Bytes.unsafeDrop 1 c)
     else (# | (# (), unI (offset c + 1), unI (length c - 1) #) #)
+
+
+hexFixedWord32 :: e -> Parser e s Word32
+{-# inline hexFixedWord32 #-}
+hexFixedWord32 e = Parser
+  (\x s0 -> case runParser (hexFixedWord32# e) x s0 of
+    (# s1, r #) -> case r of
+      (# err | #) -> (# s1, (# err | #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W32# a, b, c #) #) #)
+  )
+
+hexFixedWord32# :: e -> Parser e s Word#
+{-# noinline hexFixedWord32# #-}
+hexFixedWord32# e = uneffectfulWord# $ \chunk -> if length chunk >= 8
+  then
+    let !w0@(W# n0) = oneHex $ PM.indexByteArray (array chunk) (offset chunk)
+        !w1@(W# n1) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 1)
+        !w2@(W# n2) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 2)
+        !w3@(W# n3) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 3)
+        !w4@(W# n4) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 4)
+        !w5@(W# n5) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 5)
+        !w6@(W# n6) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 6)
+        !w7@(W# n7) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 7)
+     in if | w0 .|. w1 .|. w2 .|. w3 .|. w4 .|. w5 .|. w6 .|. w7 /= maxBound ->
+             (# |
+                (# (n0 `Exts.timesWord#` 268435456##) `Exts.plusWord#`
+                   (n1 `Exts.timesWord#` 16777216##) `Exts.plusWord#`
+                   (n2 `Exts.timesWord#` 1048576##) `Exts.plusWord#`
+                   (n3 `Exts.timesWord#` 65536##) `Exts.plusWord#`
+                   (n4 `Exts.timesWord#` 4096##) `Exts.plusWord#`
+                   (n5 `Exts.timesWord#` 256##) `Exts.plusWord#`
+                   (n6 `Exts.timesWord#` 16##) `Exts.plusWord#`
+                   n7
+                ,  unI (offset chunk) +# 8#
+                ,  unI (length chunk) -# 8# #) #)
+           | otherwise -> (# e | #)
+  else (# e | #)
 
 -- | Parse exactly four ASCII-encoded characters, interpretting
 -- them as the hexadecimal encoding of a 16-bit number. Note that
