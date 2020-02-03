@@ -309,6 +309,36 @@ tests = testGroup "Parser"
       P.parseBytes
         (P.replicate 2 (Ascii.takeShortWhile (/=',') <* Ascii.char () ','))
         (bytes "the,world,")
+  , testGroup "hexFixedWord8"
+    [ testCase "A" $
+        P.parseBytes (Latin.hexFixedWord8 ()) (bytes "A") @=? P.Failure ()
+    , testCase "B" $
+        P.parseBytes (Latin.hexFixedWord8 ()) (bytes "0A") @=? P.Success (Slice 3 0 0x0A)
+    , testCase "C" $
+        P.parseBytes (Latin.hexFixedWord8 ()) (bytes "") @=? P.Failure ()
+    , testCase "D" $
+        P.parseBytes (Latin.hexFixedWord8 ()) (bytes "A!") @=? P.Failure ()
+    ]
+  , testGroup "hexFixedWord16"
+    [ testCase "A" $
+        P.parseBytes (Latin.hexFixedWord16 ()) (bytes "A") @=? P.Failure ()
+    , testCase "B" $
+        P.parseBytes (Latin.hexFixedWord16 ()) (bytes "0A0A") @=? P.Success (Slice 5 0 0x0A0A)
+    , testCase "C" $
+        P.parseBytes (Latin.hexFixedWord16 ()) (bytes "") @=? P.Failure ()
+    , testCase "D" $
+        P.parseBytes (Latin.hexFixedWord16 ()) (bytes "A!A!") @=? P.Failure ()
+    ]
+  , testGroup "hexFixedWord32"
+    [ testCase "A" $
+        P.parseBytes (Latin.hexFixedWord32 ()) (bytes "A") @=? P.Failure ()
+    , testCase "B" $
+        P.parseBytes (Latin.hexFixedWord32 ()) (bytes "0A0A0A0A") @=? P.Success (Slice 9 0 0x0A0A0A0A)
+    , testCase "C" $
+        P.parseBytes (Latin.hexFixedWord32 ()) (bytes "") @=? P.Failure ()
+    , testCase "D" $
+        P.parseBytes (Latin.hexFixedWord32 ()) (bytes "A!A0A0A0") @=? P.Failure ()
+    ]
   ]
 
 bytes :: String -> Bytes
