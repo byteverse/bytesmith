@@ -25,6 +25,7 @@ module Data.Bytes.Parser.LittleEndian
   , word32
   , word64
   , word128
+  , word256
     -- ** Signed
   , int8
   , int16
@@ -36,6 +37,7 @@ module Data.Bytes.Parser.LittleEndian
   , word32Array
   , word64Array
   , word128Array
+  , word256Array
     -- ** Unsigned
   , int64Array
   ) where
@@ -49,10 +51,10 @@ import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (Parser,uneffectful)
 import Data.Bytes.Parser.Internal (InternalResult(..))
 import Data.Bytes.Parser.Internal (swapArray16,swapArray32)
-import Data.Bytes.Parser.Internal (swapArray64,swapArray128)
+import Data.Bytes.Parser.Internal (swapArray64,swapArray128,swapArray256)
 import Data.Word (Word8,Word16,Word32,Word64)
 import Data.Int (Int8,Int16,Int32,Int64)
-import Data.WideWord (Word128(Word128))
+import Data.WideWord (Word128(Word128),Word256(Word256))
 import GHC.ByteOrder (ByteOrder(LittleEndian,BigEndian),targetByteOrder)
 
 import qualified Data.Bytes as Bytes
@@ -114,6 +116,18 @@ word128Array e !n = case targetByteOrder of
     let r = swapArray128 bs
     pure (asWord128s r)
 
+-- | Parse an array of little-endian unsigned 256-bit words.
+word256Array ::
+     e -- ^ Error message if not enough bytes are present
+  -> Int -- ^ Number of little-endian 256-bit words to consume
+  -> Parser e s (PrimArray Word256) -- ^ Native-endian elements
+word256Array e !n = case targetByteOrder of
+  LittleEndian -> fmap (asWord256s . Bytes.toByteArrayClone) (P.take e (n * 32))
+  BigEndian -> do
+    bs <- P.take e (n * 32)
+    let r = swapArray256 bs
+    pure (asWord256s r)
+
 -- | Parse an array of little-endian signed 64-bit words.
 int64Array ::
      e -- ^ Error message if not enough bytes are present
@@ -134,6 +148,9 @@ asWord64s (ByteArray x) = PrimArray x
 
 asWord128s :: ByteArray -> PrimArray Word128
 asWord128s (ByteArray x) = PrimArray x
+
+asWord256s :: ByteArray -> PrimArray Word256
+asWord256s (ByteArray x) = PrimArray x
 
 -- | Unsigned 16-bit word.
 word16 :: e -> Parser e s Word16
@@ -189,6 +206,10 @@ word64 e = uneffectful $ \chunk -> if length chunk >= 8
           )
           (offset chunk + 8) (length chunk - 8)
   else InternalFailure e
+
+-- | Unsigned 256-bit word.
+word256 :: e -> Parser e s Word256
+word256 e = (\d c b a -> Word256 a b c d) <$> word64 e <*> word64 e <*> word64 e <*> word64 e
 
 -- | Unsigned 128-bit word.
 word128 :: e -> Parser e s Word128

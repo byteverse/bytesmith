@@ -105,6 +105,19 @@ tests = testGroup "Parser"
       P.parseBytes (replicateM (length xs) (BigEndian.word128 ())) bs
       ===
       P.parseBytes (fmap Exts.toList (BigEndian.word128Array () (length xs))) bs
+  , testCase "big-endian-word256" $
+      P.parseBytesMaybe (BigEndian.word256Array () 1) (Exts.fromList [
+        0x12, 0x34, 0x56, 0x78, 0x90,
+        0x12, 0x34, 0x56, 0x78, 0x90,
+        0x12, 0x34, 0x56, 0x78, 0x90,
+        0x12,
+        0x12, 0x34, 0x56, 0x78, 0x90,
+        0x12, 0x34, 0x56, 0x78, 0x90,
+        0x12, 0x34, 0x56, 0x78, 0x90,
+        0x12
+      ])
+      @=?
+      Just (Exts.fromList [0x1234567890123456789012345678901212345678901234567890123456789012])
   , testProperty "big-endian-word64" bigEndianWord64
   , testProperty "big-endian-word32" bigEndianWord32
   , testProperty "little-endian-word32" littleEndianWord32

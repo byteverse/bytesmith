@@ -24,6 +24,7 @@ module Data.Bytes.Parser.BigEndian
   , word32
   , word64
   , word128
+  , word256
     -- * Signed
   , int8
   , int16
@@ -35,6 +36,7 @@ module Data.Bytes.Parser.BigEndian
   , word32Array
   , word64Array
   , word128Array
+  , word256Array
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
@@ -44,12 +46,12 @@ import Data.Bits ((.|.),unsafeShiftL)
 import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (Parser,uneffectful)
 import Data.Bytes.Parser.Internal (InternalResult(..))
-import Data.Bytes.Parser.Internal (swapArray16,swapArray32,swapArray64)
+import Data.Bytes.Parser.Internal (swapArray16,swapArray32,swapArray64,swapArray256)
 import Data.Bytes.Parser.Internal (swapArray128)
 import Data.Word (Word8,Word16,Word32,Word64)
 import Data.Int (Int8,Int16,Int32,Int64)
 import Data.Primitive (ByteArray(..),PrimArray(..))
-import Data.WideWord (Word128(Word128))
+import Data.WideWord (Word128(Word128),Word256(Word256))
 import GHC.ByteOrder (ByteOrder(LittleEndian,BigEndian),targetByteOrder)
 
 import qualified Data.Bytes as Bytes
@@ -99,6 +101,18 @@ word64Array e !n = case targetByteOrder of
     let r = swapArray64 bs
     pure (asWord64s r)
 
+-- | Parse an array of big-endian unsigned 256-bit words.
+word256Array ::
+     e -- ^ Error message if not enough bytes are present
+  -> Int -- ^ Number of big-endian 256-bit words to consume
+  -> Parser e s (PrimArray Word256) -- ^ Native-endian elements
+word256Array e !n = case targetByteOrder of
+  BigEndian -> fmap (asWord256s . Bytes.toByteArrayClone) (P.take e (n * 32))
+  LittleEndian -> do
+    bs <- P.take e (n * 32)
+    let r = swapArray256 bs
+    pure (asWord256s r)
+
 -- | Parse an array of big-endian unsigned 128-bit words.
 word128Array ::
      e -- ^ Error message if not enough bytes are present
@@ -122,6 +136,9 @@ asWord64s (ByteArray x) = PrimArray x
 
 asWord128s :: ByteArray -> PrimArray Word128
 asWord128s (ByteArray x) = PrimArray x
+
+asWord256s :: ByteArray -> PrimArray Word256
+asWord256s (ByteArray x) = PrimArray x
 
 -- | Unsigned 16-bit word.
 word16 :: e -> Parser e s Word16
@@ -181,6 +198,10 @@ word64 e = uneffectful $ \chunk -> if length chunk >= 8
 -- | Unsigned 128-bit word.
 word128 :: e -> Parser e s Word128
 word128 e = liftA2 Word128 (word64 e) (word64 e)
+
+-- | Unsigned 256-bit word.
+word256 :: e -> Parser e s Word256
+word256 e = (\a b c d -> Word256 a b c d) <$> word64 e <*> word64 e <*> word64 e <*> word64 e
 
 -- | Signed 8-bit integer.
 int8 :: e -> Parser e s Int8

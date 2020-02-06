@@ -38,6 +38,7 @@ module Data.Bytes.Parser.Internal
   , swapArray32
   , swapArray64
   , swapArray128
+  , swapArray256
   ) where
 
 import Prelude hiding (length,any,fail,takeWhile)
@@ -262,6 +263,23 @@ swapArray128 (Bytes{array,offset,length}) = runByteArrayST $ do
           PM.writeByteArray dst (ixDst + 14) v1
           PM.writeByteArray dst (ixDst + 15) v0
           go (ixSrc + 16) (ixDst + 16) (len - 16)
+        else pure ()
+  go offset 0 length
+  PM.unsafeFreezeByteArray dst
+
+swapArray256 :: Bytes -> ByteArray
+swapArray256 (Bytes{array,offset,length}) = runByteArrayST $ do
+  dst <- PM.newByteArray length
+  let go !ixSrc !ixDst !len = if len > 0
+        then do
+          let loop !i
+                | i < 32 = do
+                    let v = PM.indexByteArray array (ixSrc + i) :: Word8
+                    PM.writeByteArray dst (ixDst + (31 - i)) v
+                    loop (i + 1)
+                | otherwise = pure ()
+          loop 0
+          go (ixSrc + 32) (ixDst + 32) (len - 32)
         else pure ()
   go offset 0 length
   PM.unsafeFreezeByteArray dst
