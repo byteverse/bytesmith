@@ -895,6 +895,9 @@ skipUntilConsumeLoop e !w !c = case length c of
     else (# | (# (), unI (offset c + 1), unI (length c - 1) #) #)
 
 
+-- | Parse exactly eight ASCII-encoded characters, interpreting them as the
+-- hexadecimal encoding of a 32-bit number. Note that this rejects a sequence
+-- such as @BC5A9@, requiring @000BC5A9@ instead. This is insensitive to case.
 hexFixedWord32 :: e -> Parser e s Word32
 {-# inline hexFixedWord32 #-}
 hexFixedWord32 e = Parser
@@ -931,7 +934,7 @@ hexFixedWord32# e = uneffectfulWord# $ \chunk -> if length chunk >= 8
            | otherwise -> (# e | #)
   else (# e | #)
 
--- | Parse exactly four ASCII-encoded characters, interpretting
+-- | Parse exactly four ASCII-encoded characters, interpreting
 -- them as the hexadecimal encoding of a 16-bit number. Note that
 -- this rejects a sequence such as @5A9@, requiring @05A9@ instead.
 -- This is insensitive to case. This is particularly useful when
