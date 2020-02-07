@@ -73,6 +73,7 @@ module Data.Bytes.Parser.Latin
   , hexFixedWord8
   , hexFixedWord16
   , hexFixedWord32
+  , hexFixedWord64
     -- *** Digit
   , hexNibbleLower
   , tryHexNibbleLower
@@ -932,6 +933,35 @@ hexFixedWord32# e = uneffectfulWord# $ \chunk -> if length chunk >= 8
                 ,  unI (offset chunk) +# 8#
                 ,  unI (length chunk) -# 8# #) #)
            | otherwise -> (# e | #)
+  else (# e | #)
+
+-- | Parse exactly 16 ASCII-encoded characters, interpreting them as the
+-- hexadecimal encoding of a 64-bit number. Note that this rejects a sequence
+-- such as @BC5A9@, requiring @00000000000BC5A9@ instead. This is insensitive
+-- to case.
+hexFixedWord64 :: e -> Parser e s Word64
+{-# inline hexFixedWord64 #-}
+hexFixedWord64 e = Parser
+  (\x s0 -> case runParser (hexFixedWord64# e) x s0 of
+    (# s1, r #) -> case r of
+      (# err | #) -> (# s1, (# err | #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W64# a, b, c #) #) #)
+  )
+
+hexFixedWord64# :: e -> Parser e s Word#
+{-# noinline hexFixedWord64# #-}
+hexFixedWord64# e = uneffectfulWord# $ \chunk -> if length chunk >= 16
+  then
+    let go !off !len !acc = case len of
+          0 -> case acc of
+            W# r -> 
+              (# | (# r
+              ,  unI off
+              ,  unI (length chunk) -# 16# #) #)
+          _ -> case oneHexMaybe (PM.indexByteArray (array chunk) off) of
+            Nothing -> (# e | #)
+            Just w -> go (off + 1) (len - 1) ((acc * 16) + w)
+     in go (offset chunk) (16 :: Int) (0 :: Word)
   else (# e | #)
 
 -- | Parse exactly four ASCII-encoded characters, interpreting

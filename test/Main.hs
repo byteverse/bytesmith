@@ -352,6 +352,12 @@ tests = testGroup "Parser"
     , testCase "D" $
         P.parseBytes (Latin.hexFixedWord32 ()) (bytes "A!A0A0A0") @=? P.Failure ()
     ]
+  , testGroup "hexFixedWord64"
+    [ testCase "A" $
+        P.parseBytes (Latin.hexFixedWord64 ()) (bytes "ABCD01235678BCDE")
+        @=? P.Success
+        (Slice 17 0 0xABCD01235678BCDE)
+    ]
   ]
 
 bytes :: String -> Bytes
