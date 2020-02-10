@@ -1,6 +1,6 @@
 # Revision history for bytesmith
 
-## 0.3.5.0 -- 2020-??-??
+## 0.3.5.0 -- 2020-02-10
 
 * Add big-endian and little-endian `word256` and `word256Array` parsers.
 * Add `hexFixedWord64`.
