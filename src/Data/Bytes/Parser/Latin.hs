@@ -33,6 +33,7 @@ module Data.Bytes.Parser.Latin
   , char9
   , char10
   , char11
+  , char12
     -- ** Try
   , trySatisfy
   , trySatisfyThen
@@ -280,7 +281,7 @@ char10 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 = uneffectful $ \chunk ->
          -> InternalSuccess () (offset chunk + 10) (length chunk - 10)
      | otherwise -> InternalFailure e
 
--- | Consume ten characters, failing if they do
+-- | Consume eleven characters, failing if they do
 -- not match the expected values.
 char11 :: e -> Char -> Char -> Char -> Char -> Char -> Char
   -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
@@ -298,6 +299,27 @@ char11 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 !c10 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk + 9) == c9
      , indexLatinCharArray (array chunk) (offset chunk + 10) == c10
          -> InternalSuccess () (offset chunk + 11) (length chunk - 11)
+     | otherwise -> InternalFailure e
+
+-- | Consume twelve characters, failing if they do
+-- not match the expected values.
+char12 :: e -> Char -> Char -> Char -> Char -> Char -> Char
+  -> Char -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+char12 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 !c10 !c11 = uneffectful $ \chunk ->
+  if | length chunk > 11
+     , indexLatinCharArray (array chunk) (offset chunk) == c0
+     , indexLatinCharArray (array chunk) (offset chunk + 1) == c1
+     , indexLatinCharArray (array chunk) (offset chunk + 2) == c2
+     , indexLatinCharArray (array chunk) (offset chunk + 3) == c3
+     , indexLatinCharArray (array chunk) (offset chunk + 4) == c4
+     , indexLatinCharArray (array chunk) (offset chunk + 5) == c5
+     , indexLatinCharArray (array chunk) (offset chunk + 6) == c6
+     , indexLatinCharArray (array chunk) (offset chunk + 7) == c7
+     , indexLatinCharArray (array chunk) (offset chunk + 8) == c8
+     , indexLatinCharArray (array chunk) (offset chunk + 9) == c9
+     , indexLatinCharArray (array chunk) (offset chunk + 10) == c10
+     , indexLatinCharArray (array chunk) (offset chunk + 11) == c11
+         -> InternalSuccess () (offset chunk + 12) (length chunk - 12)
      | otherwise -> InternalFailure e
 
 -- | Consumes and returns the next character in the input.
