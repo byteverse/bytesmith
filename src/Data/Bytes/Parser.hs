@@ -41,6 +41,7 @@ module Data.Bytes.Parser
     -- * Skip
   , skipWhile
   , skipTrailedBy
+  , skipTrailedByEither
     -- * Match
   , byteArray
   , bytes
@@ -302,6 +303,30 @@ skipUntilConsumeByteLoop e !w !c = if length c > 0
   then if PM.indexByteArray (array c) (offset c) /= (w :: Word8)
     then skipUntilConsumeByteLoop e w (B.unsafeDrop 1 c)
     else (# | (# (), unI (offset c + 1), unI (length c - 1) #) #)
+  else (# e | #)
+
+-- | Skip all bytes until either of the bytes in encountered. Then,
+-- consume the matched byte. @True@ indicates that the first argument
+-- byte was encountered. @False@ indicates that the second argument
+-- byte was encountered.
+skipTrailedByEither ::
+     e -- ^ Error message
+  -> Word8 -- ^ First trailer, @True@ indicates that this was encountered
+  -> Word8 -- ^ Second trailer, @False@ indicates that this was encountered
+  -> Parser e s Bool
+skipTrailedByEither e !wa !wb = uneffectful# (\c -> skipUntilConsumeByteEitherLoop e wa wb c)
+
+skipUntilConsumeByteEitherLoop ::
+     e -- Error message
+  -> Word8 -- first trailer
+  -> Word8 -- second trailer
+  -> Bytes -- Chunk
+  -> Result# e Bool
+skipUntilConsumeByteEitherLoop e !wa !wb !c = if length c > 0
+  then let byte = PM.indexByteArray (array c) (offset c) in
+    if | byte == wa -> (# | (# True, unI (offset c + 1), unI (length c - 1) #) #)
+       | byte == wb -> (# | (# False, unI (offset c + 1), unI (length c - 1) #) #)
+       | otherwise -> skipUntilConsumeByteEitherLoop e wa wb (B.unsafeDrop 1 c)
   else (# e | #)
 
 -- | Take the given number of bytes. Fails if there is not enough

@@ -3,6 +3,7 @@
 ## 0.3.6.0 -- 2020-??-??
 
 * Add `char12`
+* Add `skipTrailedByEither`
 
 ## 0.3.5.0 -- 2020-02-10
 
