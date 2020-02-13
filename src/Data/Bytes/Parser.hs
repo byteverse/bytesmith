@@ -47,6 +47,7 @@ module Data.Bytes.Parser
   , bytes
   , satisfy
   , satisfyWith
+  , cstring
     -- * End of Input
   , endOfInput
   , isEndOfInput
@@ -101,6 +102,7 @@ import Data.Bytes.Parser.Types (Result(Failure,Success),Slice(Slice))
 import Data.Bytes.Parser.Unsafe (unconsume,expose,cursor)
 import Data.Bytes.Types (Bytes(..))
 import Data.Primitive (ByteArray(..))
+import Foreign.C.String (CString)
 import GHC.Exts (Int(I#),Word#,Int#,Char#,runRW#,(+#),(-#),(>=#))
 import GHC.ST (ST(..))
 import GHC.Word (Word32(W32#),Word8)
@@ -109,6 +111,7 @@ import Data.Primitive.Contiguous (Contiguous,Element)
 import qualified Data.Bytes as B
 import qualified Data.Primitive as PM
 import qualified Data.Primitive.Contiguous as C
+import qualified GHC.Exts as Exts
 
 -- | Parse a byte sequence. This can succeed even if the
 -- entire slice was not consumed by the parser.
@@ -184,6 +187,7 @@ effect (ST f) = Parser
 byteArray :: e -> ByteArray -> Parser e s ()
 byteArray e !expected = bytes e (B.fromByteArray expected)
 
+-- | Consume input matching the byte sequence.
 bytes :: e -> Bytes -> Parser e s ()
 bytes e !expected = Parser
   ( \actual@(# _, off, len #) s ->
@@ -192,6 +196,20 @@ bytes e !expected = Parser
             (# | (# (), off +# movement, len -# movement #) #)
           else (# e | #)
      in (# s, r #)
+  )
+
+-- | Consume input matching the @NUL@-terminated C String.
+cstring :: e -> CString -> Parser e s ()
+cstring e (Exts.Ptr ptr0) = Parser
+  ( \(# arr, off0, len0 #) s -> 
+    let go !ptr !off !len = case Exts.indexWord8OffAddr# ptr 0# of
+          0## -> (# s, (# | (# (), off, len #) #) #)
+          c -> case len of
+            0# -> (# s, (# e | #) #)
+            _ -> case Exts.eqWord# c (Exts.indexWord8Array# arr off) of
+              1# -> go (Exts.plusAddr# ptr 1# ) (off +# 1# ) (len -# 1# )
+              _ -> (# s, (# e | #) #)
+     in go ptr0 off0 len0
   )
 
 infix 0 <?>

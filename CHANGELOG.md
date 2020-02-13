@@ -4,6 +4,7 @@
 
 * Add `char12`
 * Add `skipTrailedByEither`
+* Add `cstring`
 
 ## 0.3.5.0 -- 2020-02-10
 
