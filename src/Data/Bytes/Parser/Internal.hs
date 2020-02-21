@@ -3,10 +3,12 @@
 {-# language DataKinds #-}
 {-# language DeriveFunctor #-}
 {-# language DerivingStrategies #-}
+{-# language FlexibleInstances #-}
 {-# language GADTSyntax #-}
 {-# language KindSignatures #-}
 {-# language LambdaCase #-}
 {-# language MagicHash #-}
+{-# language MultiParamTypeClasses #-}
 {-# language MultiWayIf #-}
 {-# language NamedFieldPuns #-}
 {-# language PolyKinds #-}
@@ -50,9 +52,11 @@ import Data.Bytes.Types (Bytes(..))
 import Data.Kind (Type)
 import Data.Word (Word8)
 import GHC.Exts (TYPE,RuntimeRep,Int(I#),Int#,State#,ByteArray#,Char(C#))
+import GHC.Exts (RuntimeRep(LiftedRep,IntRep,TupleRep))
 
 import qualified Control.Applicative
 import qualified Control.Monad
+import qualified Control.Monad.Levity as Levity
 import qualified Data.Primitive as PM
 import qualified GHC.Exts as Exts
 
@@ -127,22 +131,35 @@ instance Applicative (Parser e s) where
   pure = pureParser
   (<*>) = Control.Monad.ap
 
-pureParser :: a -> Parser e s a
-pureParser a = Parser
-  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+instance Levity.Monad Parser 'LiftedRep where
+  {-# inline pure #-}
+  {-# inline (>>=) #-}
+  {-# inline (>>) #-}
+  pure = pureParser
+  (>>=) = bindParser
+  (>>) = sequenceParser
 
+instance Levity.Monad Parser 'IntRep where
+  {-# inline pure #-}
+  {-# inline (>>=) #-}
+  {-# inline (>>) #-}
+  pure = pureIntParser
+  (>>=) = bindIntParser
+  (>>) = sequenceIntParser
+
+instance Levity.Monad Parser ('TupleRep '[ 'IntRep, 'IntRep]) where
+  {-# inline pure #-}
+  {-# inline (>>=) #-}
+  {-# inline (>>) #-}
+  pure = pureIntPairParser
+  (>>=) = bindIntPairParser
+  (>>) = sequenceIntPairParser
 
 instance Monad (Parser e s) where
   {-# inline return #-}
   {-# inline (>>=) #-}
   return = pureParser
-  Parser f >>= g = Parser
-    (\x@(# arr, _, _ #) s0 -> case f x s0 of
-      (# s1, r0 #) -> case r0 of
-        (# e | #) -> (# s1, (# e | #) #)
-        (# | (# y, b, c #) #) ->
-          runParser (g y) (# arr, b, c #) s1
-    )
+  (>>=) = bindParser
 
 instance Functor (Parser e s) where
   {-# inline fmap #-}
@@ -283,3 +300,81 @@ swapArray256 (Bytes{array,offset,length}) = runByteArrayST $ do
         else pure ()
   go offset 0 length
   PM.unsafeFreezeByteArray dst
+
+pureParser :: a -> Parser e s a
+{-# inline pureParser #-}
+pureParser a = Parser
+  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+
+bindParser :: Parser e s a -> (a -> Parser e s b) -> Parser e s b
+{-# inline bindParser #-}
+bindParser (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+sequenceParser :: Parser e s a -> Parser e s b -> Parser e s b
+{-# inline sequenceParser #-}
+sequenceParser (Parser f) (Parser g) = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+  )
+
+pureIntParser :: forall (a :: TYPE 'IntRep) e s.
+  a -> Parser e s a
+{-# inline pureIntParser #-}
+pureIntParser a = Parser
+  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+
+bindIntParser :: forall (a :: TYPE 'IntRep) e s b.
+  Parser e s a -> (a -> Parser e s b) -> Parser e s b
+{-# inline bindIntParser #-}
+bindIntParser (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+sequenceIntParser :: forall (a :: TYPE 'IntRep) e s b.
+  Parser e s a -> Parser e s b -> Parser e s b
+{-# inline sequenceIntParser #-}
+sequenceIntParser (Parser f) (Parser g) = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+  )
+
+pureIntPairParser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) e s.
+  a -> Parser e s a
+{-# inline pureIntPairParser #-}
+pureIntPairParser a = Parser
+  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+
+bindIntPairParser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) e s b.
+  Parser e s a -> (a -> Parser e s b) -> Parser e s b
+{-# inline bindIntPairParser #-}
+bindIntPairParser (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+sequenceIntPairParser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) e s b.
+  Parser e s a -> Parser e s b -> Parser e s b
+{-# inline sequenceIntPairParser #-}
+sequenceIntPairParser (Parser f) (Parser g) = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+  )
