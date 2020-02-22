@@ -41,7 +41,9 @@ module Data.Bytes.Parser
     -- * Skip
   , skipWhile
   , skipTrailedBy
-  , skipTrailedByEither
+  , skipTrailedBy2
+  , skipTrailedBy2#
+  , skipTrailedBy3#
     -- * Match
   , byteArray
   , bytes
@@ -67,6 +69,8 @@ module Data.Bytes.Parser
     -- * Subparsing
   , delimit
   , measure
+  , measure_
+  , measure_#
     -- * Lift Effects
   , effect
     -- * Box Result
@@ -97,7 +101,7 @@ import Prelude hiding (length,any,fail,takeWhile,take,replicate)
 
 import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),ST#,unboxBytes)
 import Data.Bytes.Parser.Internal (boxBytes,Result#,uneffectful,fail)
-import Data.Bytes.Parser.Internal (uneffectful#)
+import Data.Bytes.Parser.Internal (uneffectful#,uneffectfulInt#)
 import Data.Bytes.Parser.Types (Result(Failure,Success),Slice(Slice))
 import Data.Bytes.Parser.Unsafe (unconsume,expose,cursor)
 import Data.Bytes.Types (Bytes(..))
@@ -327,24 +331,56 @@ skipUntilConsumeByteLoop e !w !c = if length c > 0
 -- consume the matched byte. @True@ indicates that the first argument
 -- byte was encountered. @False@ indicates that the second argument
 -- byte was encountered.
-skipTrailedByEither ::
+skipTrailedBy2 ::
      e -- ^ Error message
-  -> Word8 -- ^ First trailer, @True@ indicates that this was encountered
-  -> Word8 -- ^ Second trailer, @False@ indicates that this was encountered
+  -> Word8 -- ^ First trailer, @False@ indicates that this was encountered
+  -> Word8 -- ^ Second trailer, @True@ indicates that this was encountered
   -> Parser e s Bool
-skipTrailedByEither e !wa !wb = uneffectful# (\c -> skipUntilConsumeByteEitherLoop e wa wb c)
+skipTrailedBy2 e !wa !wb = boxBool (skipTrailedBy2# e wa wb)
+
+skipTrailedBy2# ::
+     e -- ^ Error message
+  -> Word8 -- ^ First trailer, 0 indicates that this was encountered
+  -> Word8 -- ^ Second trailer, 1 indicates that this was encountered
+  -> Parser e s Int#
+skipTrailedBy2# e !wa !wb =
+  uneffectfulInt# (\c -> skipUntilConsumeByteEitherLoop e wa wb c)
+
+skipTrailedBy3# ::
+     e -- ^ Error message
+  -> Word8 -- ^ First trailer, 0 indicates that this was encountered
+  -> Word8 -- ^ Second trailer, 1 indicates that this was encountered
+  -> Word8 -- ^ Third trailer, 2 indicates that this was encountered
+  -> Parser e s Int#
+skipTrailedBy3# e !wa !wb !wc =
+  uneffectfulInt# (\c -> skipUntilConsumeByte3Loop e wa wb wc c)
 
 skipUntilConsumeByteEitherLoop ::
      e -- Error message
   -> Word8 -- first trailer
   -> Word8 -- second trailer
   -> Bytes -- Chunk
-  -> Result# e Bool
+  -> Result# e Int#
 skipUntilConsumeByteEitherLoop e !wa !wb !c = if length c > 0
   then let byte = PM.indexByteArray (array c) (offset c) in
-    if | byte == wa -> (# | (# True, unI (offset c + 1), unI (length c - 1) #) #)
-       | byte == wb -> (# | (# False, unI (offset c + 1), unI (length c - 1) #) #)
+    if | byte == wa -> (# | (# 0#, unI (offset c + 1), unI (length c - 1) #) #)
+       | byte == wb -> (# | (# 1#, unI (offset c + 1), unI (length c - 1) #) #)
        | otherwise -> skipUntilConsumeByteEitherLoop e wa wb (B.unsafeDrop 1 c)
+  else (# e | #)
+
+skipUntilConsumeByte3Loop ::
+     e -- Error message
+  -> Word8 -- first trailer
+  -> Word8 -- second trailer
+  -> Word8 -- third trailer
+  -> Bytes -- Chunk
+  -> Result# e Int#
+skipUntilConsumeByte3Loop e !wa !wb !wc !c = if length c > 0
+  then let byte = PM.indexByteArray (array c) (offset c) in
+    if | byte == wa -> (# | (# 0#, unI (offset c + 1), unI (length c - 1) #) #)
+       | byte == wb -> (# | (# 1#, unI (offset c + 1), unI (length c - 1) #) #)
+       | byte == wc -> (# | (# 2#, unI (offset c + 1), unI (length c - 1) #) #)
+       | otherwise -> skipUntilConsumeByte3Loop e wa wb wc (B.unsafeDrop 1 c)
   else (# e | #)
 
 -- | Take the given number of bytes. Fails if there is not enough
@@ -438,6 +474,26 @@ boxWord32 (Parser f) = Parser
     (# s1, r #) -> case r of
       (# e | #) -> (# s1, (# e | #) #)
       (# | (# a, b, c #) #) -> (# s1, (# | (# W32# a, b, c #) #) #)
+  )
+
+-- | Convert a @(# Int#, Int# #)@ parser to a @(Int,Int)@ parser.
+boxInt :: Parser e s Int# -> Parser e s Int
+{-# inline boxInt #-}
+boxInt (Parser f) = Parser
+  (\x s0 -> case f x s0 of
+    (# s1, r #) -> case r of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) -> (# s1, (# | (# I# y, b, c #) #) #)
+  )
+
+-- | Convert a @(# Int#, Int# #)@ parser to a @(Int,Int)@ parser.
+boxBool :: Parser e s Int# -> Parser e s Bool
+{-# inline boxBool #-}
+boxBool (Parser f) = Parser
+  (\x s0 -> case f x s0 of
+    (# s1, r #) -> case r of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) -> (# s1, (# | (# case y of {1# -> True; _ -> False}, b, c #) #) #)
   )
 
 -- | Convert a @(# Int#, Int# #)@ parser to a @(Int,Int)@ parser.
@@ -565,6 +621,24 @@ measure (Parser f) = Parser
       (# e | #) -> (# s1, (# e | #) #)
       (# | (# y, post, c #) #) -> (# s1, (# | (# (I# (post -# pre), y),post,c #) #) #)
   )
+
+-- | Run a parser and discard the result, returning instead the number
+-- of bytes that the parser consumed.
+measure_ :: Parser e s a -> Parser e s Int
+{-# inline measure_ #-}
+measure_ p = boxInt (measure_# p)
+
+-- | Variant of 'measure_' with an unboxed result.
+measure_# :: Parser e s a -> Parser e s Int#
+{-# inline measure_# #-}
+measure_# (Parser f) = Parser
+  (\x@(# _, pre, _ #) s0 -> case f x s0 of
+    (# s1, r #) -> case r of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# _, post, c #) #) -> (# s1, (# | (# post -# pre,post,c #) #) #)
+  )
+
+
 
 -- | Run a parser in a delimited context, failing if the requested number
 -- of bytes are not available or if the delimited parser does not

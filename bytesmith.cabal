@@ -18,12 +18,12 @@ extra-source-files: CHANGELOG.md
 
 library
   exposed-modules:
-    Control.Monad.Levity
     Data.Bytes.Parser
     Data.Bytes.Parser.BigEndian
     Data.Bytes.Parser.LittleEndian
     Data.Bytes.Parser.Ascii
     Data.Bytes.Parser.Latin
+    Data.Bytes.Parser.Rebindable
     Data.Bytes.Parser.Unsafe
     Data.Bytes.Parser.Utf8
   other-modules:
