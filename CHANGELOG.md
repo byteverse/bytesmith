@@ -5,6 +5,7 @@
 * Add `char12`
 * Add `skipTrailedByEither`
 * Add `cstring`
+* Add `peekRemaining`
 
 ## 0.3.5.0 -- 2020-02-10
 

@@ -54,6 +54,7 @@ module Data.Bytes.Parser
   , endOfInput
   , isEndOfInput
   , remaining
+  , peekRemaining
     -- * Scanning
   , scan
     -- * Lookahead
@@ -397,6 +398,12 @@ remaining :: Parser e s Bytes
 {-# inline remaining #-}
 remaining = uneffectful $ \chunk ->
   InternalSuccess chunk (offset chunk + length chunk) 0
+
+-- | Return all remaining bytes in the input without consuming them.
+peekRemaining :: Parser e s Bytes
+{-# inline peekRemaining #-}
+peekRemaining = uneffectful $ \b@(Bytes _ off len) ->
+  InternalSuccess b off len
 
 -- | Skip while the predicate is matched. This is always inlined.
 skipWhile :: (Word8 -> Bool) -> Parser e s ()
