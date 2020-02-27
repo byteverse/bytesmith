@@ -7,12 +7,18 @@
 {-# language UnboxedSums #-}
 {-# language UnboxedTuples #-}
 
--- | This is a giant hack to let authors of high-performance use
--- levity-polymorphic variants of @>>=@, @>>@, and @pure@.
+-- | Provides levity-polymorphic variants of @>>=@, @>>@, and @pure@
+-- used to assemble parsers whose result types are unlifted. This
+-- cannot be used with the @RebindableSyntax@ extension because that
+-- extension disallows representations other than @LiftedRep@. Consequently,
+-- users of this module must manually desugar do notation. See the
+-- @url-bytes@ library for an example of this module in action.
+--
+-- Only resort to the functions in this module after checking that
+-- GHC is unable to optimize away @I#@ and friends in your code.
 module Data.Bytes.Parser.Rebindable
   ( Bind(..)
   , Pure(..)
-  , Join(..)
   ) where
 
 import Prelude () 
@@ -27,10 +33,6 @@ class Bind (ra :: RuntimeRep) (rb :: RuntimeRep) where
 
 class Pure (ra :: RuntimeRep) where
   pure :: forall e s (a :: TYPE ra). a -> Parser e s a
-
-class Join (ra :: RuntimeRep) where
-  join :: forall e s (a :: TYPE ra).
-    Parser e s (Parser e s a) -> Parser e s a
 
 pureParser :: a -> Parser e s a
 {-# inline pureParser #-}
