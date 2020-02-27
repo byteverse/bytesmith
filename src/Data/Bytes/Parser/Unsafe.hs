@@ -25,6 +25,7 @@ module Data.Bytes.Parser.Unsafe
     Parser(..)
     -- * Functions
   , cursor
+  , cursor#
   , expose
   , unconsume
   , jump
@@ -34,8 +35,10 @@ import Prelude hiding (length)
 
 import Data.Primitive (ByteArray)
 import Data.Bytes.Types (Bytes(..))
-import Data.Bytes.Parser.Internal (Parser(..),uneffectful)
+import Data.Bytes.Parser.Internal (Parser(..),uneffectful,uneffectfulInt#)
 import Data.Bytes.Parser.Internal (InternalResult(..))
+
+import GHC.Exts (Int#,Int(I#))
 
 -- | Get the current offset into the chunk. Using this makes
 -- it possible to observe the internal difference between 'Bytes'
@@ -43,6 +46,10 @@ import Data.Bytes.Parser.Internal (InternalResult(..))
 cursor :: Parser e s Int
 cursor = uneffectful $ \Bytes{offset,length} ->
   InternalSuccess offset offset length
+
+-- | Variant of 'cursor' with unboxed result.
+cursor# :: Parser e s Int#
+cursor# = uneffectfulInt# $ \Bytes{offset=I# off,length=I# len} -> (# | (# off, off, len #) #)
 
 -- | Return the byte array being parsed. This includes bytes
 -- that preceed the current offset and may include bytes that

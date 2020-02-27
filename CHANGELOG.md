@@ -3,8 +3,13 @@
 ## 0.3.6.0 -- 2020-??-??
 
 * Add `char12`
-* Add `skipTrailedByEither`
+* Add `skipTrailedBy2`, `skipTrailedBy3`, and variants
+  with an unboxed result.
 * Add `cstring`
+* Add `peekRemaining`
+* Add `measure_` and `measure_#`, variants of `measure`
+  that only give the byte count.
+* Add `Data.Bytes.Parser.Rebindable`, the ultimate hack.
 
 ## 0.3.5.0 -- 2020-02-10
 

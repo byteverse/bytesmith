@@ -27,6 +27,7 @@ module Data.Bytes.Parser.Internal
   , unfailing
   , uneffectful
   , uneffectful#
+  , uneffectfulInt#
   , boxBytes
   , unboxBytes
   , unboxResult
@@ -127,22 +128,11 @@ instance Applicative (Parser e s) where
   pure = pureParser
   (<*>) = Control.Monad.ap
 
-pureParser :: a -> Parser e s a
-pureParser a = Parser
-  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
-
-
 instance Monad (Parser e s) where
   {-# inline return #-}
   {-# inline (>>=) #-}
   return = pureParser
-  Parser f >>= g = Parser
-    (\x@(# arr, _, _ #) s0 -> case f x s0 of
-      (# s1, r0 #) -> case r0 of
-        (# e | #) -> (# s1, (# e | #) #)
-        (# | (# y, b, c #) #) ->
-          runParser (g y) (# arr, b, c #) s1
-    )
+  (>>=) = bindParser
 
 instance Functor (Parser e s) where
   {-# inline fmap #-}
@@ -161,6 +151,11 @@ indexLatinCharArray (ByteArray arr) (I# off) =
 uneffectful# :: (Bytes -> Result# e a) -> Parser e s a
 {-# inline uneffectful# #-}
 uneffectful# f = Parser
+  ( \b s0 -> (# s0, (f (boxBytes b)) #) )
+
+uneffectfulInt# :: (Bytes -> Result# e Int# ) -> Parser e s Int#
+{-# inline uneffectfulInt# #-}
+uneffectfulInt# f = Parser
   ( \b s0 -> (# s0, (f (boxBytes b)) #) )
 
 upcastUnitSuccess :: (# Int#, Int# #) -> Result# e ()
@@ -283,3 +278,18 @@ swapArray256 (Bytes{array,offset,length}) = runByteArrayST $ do
         else pure ()
   go offset 0 length
   PM.unsafeFreezeByteArray dst
+
+pureParser :: a -> Parser e s a
+{-# inline pureParser #-}
+pureParser a = Parser
+  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+
+bindParser :: Parser e s a -> (a -> Parser e s b) -> Parser e s b
+{-# inline bindParser #-}
+bindParser (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
