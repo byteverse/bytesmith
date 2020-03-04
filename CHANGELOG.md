@@ -1,6 +1,6 @@
 # Revision history for bytesmith
 
-## 0.3.6.0 -- 2020-??-??
+## 0.3.6.0 -- 2020-03-04
 
 * Add `char12`
 * Add `skipTrailedBy2`, `skipTrailedBy3`, and variants
