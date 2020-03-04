@@ -10,6 +10,7 @@
 * Add `measure_` and `measure_#`, variants of `measure`
   that only give the byte count.
 * Add `Data.Bytes.Parser.Rebindable`, the ultimate hack.
+* Add `Data.Bytes.Latin.takeTrailedBy`
 
 ## 0.3.5.0 -- 2020-02-10
 

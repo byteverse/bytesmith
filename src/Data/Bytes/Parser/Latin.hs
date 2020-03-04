@@ -37,10 +37,12 @@ module Data.Bytes.Parser.Latin
     -- ** Try
   , trySatisfy
   , trySatisfyThen
-    -- * Get Character
+    -- * One Character
   , any
   , opt
   , opt#
+    -- * Many Characters
+  , takeTrailedBy
     -- * Skip
   , skipDigits
   , skipDigits1
@@ -91,6 +93,7 @@ import Data.Bytes.Parser.Internal (Parser(..),ST#,uneffectful,Result#,uneffectfu
 import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
 import Data.Bytes.Parser.Internal (boxBytes)
 import Data.Bytes.Parser (bindFromLiftedToInt)
+import Data.Bytes.Parser.Unsafe (expose,cursor)
 import Data.Word (Word8)
 import Data.Char (ord)
 import Data.Kind (Type)
@@ -870,6 +873,22 @@ upcastIntResult (# | (# a, b, c #) #) = (# | (# I# a, b, c #) #)
 
 char2Word :: Char -> Word
 char2Word = fromIntegral . ord
+
+-- | Take characters until the specified character is encountered.
+-- Consumes the matched character as well. Fails if the character
+-- is not present.  Visually, the cursor advancement and resulting
+-- @Bytes@ for @takeTrailedBy \'D\'@ look like this:
+--
+-- >  A B C D E F | input
+-- > |->->->-|    | cursor
+-- > {-*-*-}      | result bytes
+takeTrailedBy :: e -> Char -> Parser e s Bytes
+takeTrailedBy e !w = do
+  !start <- cursor
+  skipTrailedBy e w
+  !end <- cursor
+  !arr <- expose
+  pure (Bytes arr start (end - (start + 1)))
 
 -- | Skip all characters until the terminator is encountered
 -- and then consume the matching character as well. Visually,
