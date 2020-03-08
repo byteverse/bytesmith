@@ -1,5 +1,10 @@
 # Revision history for bytesmith
 
+## 0.3.7.0 -- 2020-??-??
+
+* Add `Data.Bytes.Parser.Leb128` module for LEB-128 encoding.
+  Supports signed integers with zig-zag encoding.
+
 ## 0.3.6.0 -- 2020-03-04
 
 * Add `char12`
