@@ -15,16 +15,19 @@ import Data.Bytes.Parser (Slice(Slice))
 import Data.Bytes.Types (Bytes(Bytes))
 import Data.Char (ord)
 import Data.Coerce (coerce)
+import Data.Int (Int16,Int32)
 import Data.Primitive (ByteArray(..),PrimArray(..))
 import Data.Text.Short (ShortText)
 import Data.WideWord (Word128(Word128))
 import Data.Word (Word8,Word64,Word16,Word32)
+import Numeric.Natural (Natural)
 import System.ByteOrder (Fixed(..),ByteOrder(BigEndian,LittleEndian))
 import Test.Tasty (defaultMain,testGroup,TestTree)
 import Test.Tasty.HUnit ((@=?),testCase)
 import Test.Tasty.QuickCheck ((===),testProperty)
 
 import qualified Data.Bits as Bits
+import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Parser as P
 import qualified Data.Bytes.Parser.Ascii as Ascii
 import qualified Data.Bytes.Parser.Latin as Latin
@@ -368,6 +371,10 @@ tests = testGroup "Parser"
         P.Success (Slice 5 0 0x200000)
         @=?
         P.parseBytes (Leb128.word32 ()) (bytes "\x81\x80\x80\x00")
+    , testProperty "iso" $ \w -> 
+        P.parseBytesMaybe (Leb128.word32 ()) (encodeLeb128 (fromIntegral w))
+        ===
+        Just w
     ]
   , testGroup "leb128-w16"
     [ testCase "A" $
@@ -378,6 +385,24 @@ tests = testGroup "Parser"
         P.Success (Slice 4 0 0xFFFF)
         @=?
         P.parseBytes (Leb128.word16 ()) (bytes "\x83\xFF\x7F")
+    , testProperty "iso" $ \w -> 
+        P.parseBytesMaybe (Leb128.word16 ()) (encodeLeb128 (fromIntegral w))
+        ===
+        Just w
+    ]
+  , testGroup "leb128-i16"
+    [ testProperty "iso" $ \(w :: Int16) -> 
+        P.parseBytesMaybe (Leb128.int16 ())
+          (encodeLeb128 (fromIntegral @Word16 @Natural (zigzag16 w)))
+        ===
+        Just w
+    ]
+  , testGroup "leb128-i32"
+    [ testProperty "iso" $ \(w :: Int32) -> 
+        P.parseBytesMaybe (Leb128.int32 ())
+          (encodeLeb128 (fromIntegral @Word32 @Natural (zigzag32 w)))
+        ===
+        Just w
     ]
   ]
 
@@ -492,4 +517,28 @@ withSz str f = f (bytes str) (length str + 1)
 untype :: PrimArray a -> ByteArray
 untype (PrimArray x) = ByteArray x
 
+encodeLeb128 :: Natural -> Bytes
+encodeLeb128 x = Bytes.unsafeDrop 1 (Exts.fromList (0xFF : goA)) where
+  goA =
+    let (q,r) = quotRem x 128
+        xs' = [fromIntegral @Natural @Word8 r]
+     in if q == 0
+          then xs'
+          else go xs' q
+  go !xs !n =
+    let (q,r) = quotRem n 128
+        xs' = (Bits.setBit (fromIntegral @Natural @Word8 r) 7) : xs
+     in if q == 0 
+          then xs'
+          else go xs' q
 
+-- x zigzagInteger :: Integer -> Natural
+-- x zigzagInteger x
+-- x   | x>=0 = fromInteger (x `Bits.shiftL` 1)
+-- x   | otherwise = fromInteger (negate (x `Bits.shiftL` 1) - 1)
+
+zigzag16 :: Int16 -> Word16
+zigzag16 x = fromIntegral ((x `Bits.shiftL` 1) `Bits.xor` (x `Bits.shiftR` 15))
+
+zigzag32 :: Int32 -> Word32
+zigzag32 x = fromIntegral ((x `Bits.shiftL` 1) `Bits.xor` (x `Bits.shiftR` 31))

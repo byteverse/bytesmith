@@ -13,7 +13,7 @@ module Data.Bytes.Parser.Leb128
   , int64
   ) where
 
-import Data.Bits (testBit,(.&.),unsafeShiftR,xor)
+import Data.Bits (testBit,(.&.),unsafeShiftR,xor,complement)
 import Data.Bytes.Parser (Parser)
 import Data.Int (Int16,Int32,Int64)
 import Data.Word (Word8,Word16,Word32,Word64)
@@ -65,17 +65,17 @@ stepBoundedWord e !bound !acc0 = do
     False -> pure acc1
 
 -- Zigzag decode strategy taken from https://stackoverflow.com/a/2211086/1405768
-zigzagDecode32 :: Word32 -> Int32
-zigzagDecode32 u = (unsafeShiftR s 1) `xor` (negate (s .&. 1))
-  where
-  s = fromIntegral u :: Int32
-
+-- The accepted answer is a little bit, so an answer further down was used:
+--
+-- > zigzag_decode(value) = ( value >> 1 ) ^ ( ~( value & 1 ) + 1 )
 zigzagDecode16 :: Word16 -> Int16
-zigzagDecode16 u = (unsafeShiftR s 1) `xor` (negate (s .&. 1))
-  where
-  s = fromIntegral u :: Int16
+zigzagDecode16 n =
+  fromIntegral ((unsafeShiftR n 1) `xor` (complement (n .&. 1) + 1))
 
-zigzagDecode64 :: Word64-> Int64
-zigzagDecode64 u = (unsafeShiftR s 1) `xor` (negate (s .&. 1))
-  where
-  s = fromIntegral u :: Int64
+zigzagDecode32 :: Word32 -> Int32
+zigzagDecode32 n =
+  fromIntegral ((unsafeShiftR n 1) `xor` (complement (n .&. 1) + 1))
+
+zigzagDecode64 :: Word64 -> Int64
+zigzagDecode64 n =
+  fromIntegral ((unsafeShiftR n 1) `xor` (complement (n .&. 1) + 1))
