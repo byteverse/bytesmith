@@ -2,6 +2,12 @@
 {-# language BinaryLiterals #-}
 {-# language TypeApplications #-}
 
+-- | Parse numbers that have been encoded with <https://en.wikipedia.org/wiki/LEB128 LEB-128>.
+-- LEB-128 allows arbitrarily large numbers to be encoded. Parsers in this
+-- module will fail if the number they attempt to parse is outside the
+-- range of what their target type can handle. The parsers for signed
+-- numbers assume that the numbers have been
+-- <https://developers.google.com/protocol-buffers/docs/encoding zigzig encoded>.
 module Data.Bytes.Parser.Leb128
   ( -- * Unsigned
     word16
@@ -39,12 +45,21 @@ word32 e = do
 word64 :: e -> Parser e s Word64
 word64 e = stepBoundedWord e 0x200000000000000 0
 
+-- | Parse a LEB-128-zigzag-encoded signed number. If the encoded
+-- number is outside the range @[-32768,32767]@, this fails with
+-- the provided error.
 int16 :: e -> Parser e s Int16
 int16 = fmap zigzagDecode16 . word16
 
+-- | Parse a LEB-128-zigzag-encoded signed number. If the encoded
+-- number is outside the range @[-2147483648,2147483647]@, this
+-- fails with the provided error.
 int32 :: e -> Parser e s Int32
 int32 = fmap zigzagDecode32 . word32
 
+-- | Parse a LEB-128-zigzag-encoded signed number. If the encoded
+-- number is outside the range @[-9223372036854775808,9223372036854775807]@,
+-- this fails with the provided error.
 int64 :: e -> Parser e s Int64
 int64 = fmap zigzagDecode64 . word64
 
