@@ -216,6 +216,14 @@ instance Bind 'LiftedRep ('TupleRep '[ 'IntRep, 'IntRep]) where
   (>>=) = bindFromLiftedToIntPair
   (>>) = sequenceLiftedToIntPair
 
+instance Bind 'LiftedRep
+              ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]) 
+  where
+  {-# inline (>>=) #-}
+  {-# inline (>>) #-}
+  (>>=) = bindFromLiftedToInt5
+  (>>) = sequenceLiftedToInt5
+
 instance Bind 'IntRep ('TupleRep '[ 'IntRep, 'IntRep]) where
   {-# inline (>>=) #-}
   {-# inline (>>) #-}
@@ -331,6 +339,38 @@ sequenceLiftedToIntPair ::
   -> Parser s e b
 {-# inline sequenceLiftedToIntPair #-}
 sequenceLiftedToIntPair (Parser f) (Parser g) = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+  )
+
+
+bindFromLiftedToInt5 ::
+     forall s e
+       (a :: TYPE 'LiftedRep)
+       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])).
+     Parser s e a
+  -> (a -> Parser s e b)
+  -> Parser s e b
+{-# inline bindFromLiftedToInt5 #-}
+bindFromLiftedToInt5 (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+sequenceLiftedToInt5 ::
+     forall s e
+       (a :: TYPE 'LiftedRep)
+       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep ])).
+     Parser s e a
+  -> Parser s e b
+  -> Parser s e b
+{-# inline sequenceLiftedToInt5 #-}
+sequenceLiftedToInt5 (Parser f) (Parser g) = Parser
   (\x@(# arr, _, _ #) s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# e | #) -> (# s1, (# e | #) #)
