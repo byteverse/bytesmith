@@ -102,10 +102,64 @@ bindIntPairParser (Parser f) g = Parser
         runParser (g y) (# arr, b, c #) s1
   )
 
+pureInt5Parser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])) e s.
+  a -> Parser e s a
+{-# inline pureInt5Parser #-}
+pureInt5Parser a = Parser
+  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+
+bindInt5Parser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])) e s b.
+  Parser e s a -> (a -> Parser e s b) -> Parser e s b
+{-# inline bindInt5Parser #-}
+bindInt5Parser (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+sequenceInt5Parser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])) e s b.
+  Parser e s a -> Parser e s b -> Parser e s b
+{-# inline sequenceInt5Parser #-}
+sequenceInt5Parser (Parser f) (Parser g) = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+  )
+
 sequenceIntPairParser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) e s b.
   Parser e s a -> Parser e s b -> Parser e s b
 {-# inline sequenceIntPairParser #-}
 sequenceIntPairParser (Parser f) (Parser g) = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+  )
+
+bindInt2to5Parser :: forall 
+  (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) 
+  (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]))
+  e s.
+  Parser e s a -> (a -> Parser e s b) -> Parser e s b
+{-# inline bindInt2to5Parser #-}
+bindInt2to5Parser (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+sequenceInt2to5Parser :: forall 
+  (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep]))
+  (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]))
+  e s.
+  Parser e s a -> Parser e s b -> Parser e s b
+{-# inline sequenceInt2to5Parser #-}
+sequenceInt2to5Parser (Parser f) (Parser g) = Parser
   (\x@(# arr, _, _ #) s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# e | #) -> (# s1, (# e | #) #)
@@ -129,6 +183,32 @@ instance Bind ('TupleRep '[ 'IntRep, 'IntRep]) 'LiftedRep where
   {-# inline (>>) #-}
   (>>=) = bindIntPairParser
   (>>) = sequenceIntPairParser
+
+
+instance Bind ('TupleRep '[ 'IntRep, 'IntRep])
+              ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]) 
+  where
+  {-# inline (>>=) #-}
+  {-# inline (>>) #-}
+  (>>=) = bindInt2to5Parser
+  (>>) = sequenceInt2to5Parser
+
+instance Bind ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]) 
+              'LiftedRep
+  where
+  {-# inline (>>=) #-}
+  {-# inline (>>) #-}
+  (>>=) = bindInt5Parser
+  (>>) = sequenceInt5Parser
+
+
+instance Bind 'IntRep
+              ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]) 
+  where
+  {-# inline (>>=) #-}
+  {-# inline (>>) #-}
+  (>>=) = bindFromIntToInt5
+  (>>) = sequenceIntToInt5
 
 instance Bind 'LiftedRep ('TupleRep '[ 'IntRep, 'IntRep]) where
   {-# inline (>>=) #-}
@@ -160,6 +240,10 @@ instance Pure ('TupleRep '[ 'IntRep, 'IntRep]) where
   {-# inline pure #-}
   pure = pureIntPairParser
 
+instance Pure ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]) where
+  {-# inline pure #-}
+  pure = pureInt5Parser
+
 bindFromIntToIntPair ::
      forall s e
        (a :: TYPE 'IntRep)
@@ -185,6 +269,37 @@ sequenceIntToIntPair ::
   -> Parser s e b
 {-# inline sequenceIntToIntPair #-}
 sequenceIntToIntPair (Parser f) (Parser g) = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+  )
+
+bindFromIntToInt5 ::
+     forall s e
+       (a :: TYPE 'IntRep)
+       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep ])).
+     Parser s e a
+  -> (a -> Parser s e b)
+  -> Parser s e b
+{-# inline bindFromIntToInt5 #-}
+bindFromIntToInt5 (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
+sequenceIntToInt5 ::
+     forall s e
+       (a :: TYPE 'IntRep)
+       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep ])).
+     Parser s e a
+  -> Parser s e b
+  -> Parser s e b
+{-# inline sequenceIntToInt5 #-}
+sequenceIntToInt5 (Parser f) (Parser g) = Parser
   (\x@(# arr, _, _ #) s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# e | #) -> (# s1, (# e | #) #)
