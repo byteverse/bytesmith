@@ -34,6 +34,7 @@ import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.Bytes.Parser.Leb128 as Leb128
 import qualified Data.Bytes.Parser.BigEndian as BigEndian
 import qualified Data.Bytes.Parser.LittleEndian as LittleEndian
+import qualified Data.List as List
 import qualified Data.Primitive as PM
 import qualified GHC.Exts as Exts
 import qualified Test.Tasty.QuickCheck as QC
@@ -370,7 +371,11 @@ tests = testGroup "Parser"
     , testCase "B" $
         P.Success (Slice 5 0 0x200000)
         @=?
-        P.parseBytes (Leb128.word32 ()) (bytes "\x81\x80\x80\x00")
+        P.parseBytes (Leb128.word32 ()) (bytes "\x80\x80\x80\x01")
+    , testCase "C" $
+        P.Success (Slice 4 0 624485)
+        @=?
+        P.parseBytes (Leb128.word32 ()) (bytes "\xE5\x8E\x26")
     , testProperty "iso" $ \w -> 
         P.parseBytesMaybe (Leb128.word32 ()) (encodeLeb128 (fromIntegral w))
         ===
@@ -380,11 +385,11 @@ tests = testGroup "Parser"
     [ testCase "A" $
         P.Failure ()
         @=?
-        P.parseBytes (Leb128.word16 ()) (bytes "\x84\x80\x00")
+        P.parseBytes (Leb128.word16 ()) (bytes "\x80\x80\x04")
     , testCase "B" $
         P.Success (Slice 4 0 0xFFFF)
         @=?
-        P.parseBytes (Leb128.word16 ()) (bytes "\x83\xFF\x7F")
+        P.parseBytes (Leb128.word16 ()) (bytes "\xFF\xFF\x03")
     , testProperty "iso" $ \w -> 
         P.parseBytesMaybe (Leb128.word16 ()) (encodeLeb128 (fromIntegral w))
         ===
@@ -518,18 +523,16 @@ untype :: PrimArray a -> ByteArray
 untype (PrimArray x) = ByteArray x
 
 encodeLeb128 :: Natural -> Bytes
-encodeLeb128 x = Bytes.unsafeDrop 1 (Exts.fromList (0xFF : goA)) where
-  goA =
-    let (q,r) = quotRem x 128
-        xs' = [fromIntegral @Natural @Word8 r]
-     in if q == 0
-          then xs'
-          else go xs' q
+encodeLeb128 x = Bytes.unsafeDrop 1 (Exts.fromList (0xFF : go [] x)) where
   go !xs !n =
     let (q,r) = quotRem n 128
-        xs' = (Bits.setBit (fromIntegral @Natural @Word8 r) 7) : xs
+        r' = fromIntegral @Natural @Word8 r
+        w = if q == 0
+          then r'
+          else Bits.setBit r' 7
+        xs' = w : xs
      in if q == 0 
-          then xs'
+          then List.reverse xs'
           else go xs' q
 
 -- x zigzagInteger :: Integer -> Natural

@@ -20,6 +20,7 @@ module Data.Bytes.Parser.Leb128
   ) where
 
 import Data.Bits (testBit,(.&.),unsafeShiftR,xor,complement)
+import Data.Bits (unsafeShiftL,(.|.))
 import Data.Bytes.Parser (Parser)
 import Data.Int (Int16,Int32,Int64)
 import Data.Word (Word8,Word16,Word32,Word64)
@@ -30,20 +31,20 @@ import qualified Data.Bytes.Parser as P
 -- than @0xFFFF@, fails with the provided error.
 word16 :: e -> Parser e s Word16
 word16 e = do
-  w <- stepBoundedWord e 0x200 0
+  w <- stepBoundedWord e 16 0 0
   pure (fromIntegral @Word64 @Word16 w)
 
 -- | Parse a LEB-128-encoded number. If the number is larger
 -- than @0xFFFFFFFF@, fails with the provided error.
 word32 :: e -> Parser e s Word32
 word32 e = do
-  w <- stepBoundedWord e 0x2000000 0
+  w <- stepBoundedWord e 32 0 0
   pure (fromIntegral @Word64 @Word32 w)
 
 -- | Parse a LEB-128-encoded number. If the number is larger
 -- than @0xFFFFFFFFFFFFFFFF@, fails with the provided error.
 word64 :: e -> Parser e s Word64
-word64 e = stepBoundedWord e 0x200000000000000 0
+word64 e = stepBoundedWord e 64 0 0
 
 -- | Parse a LEB-128-zigzag-encoded signed number. If the encoded
 -- number is outside the range @[-32768,32767]@, this fails with
@@ -63,21 +64,27 @@ int32 = fmap zigzagDecode32 . word32
 int64 :: e -> Parser e s Int64
 int64 = fmap zigzagDecode64 . word64
 
--- Precondition: accumulator is at most 128 times less than
--- the maximum word plus 1. For example, on 16-bit words:
+-- What these parameters are:
 --
--- succ_max: 0001_0000_0000_0000_0000
--- acc_max:  0000_0000_0010_0000_0000
-stepBoundedWord :: e -> Word64 -> Word64 -> Parser e s Word64
-stepBoundedWord e !bound !acc0 = do
+-- bitLimit: number of bits in the target word size
+-- accShift: shift amount, increases by 7 at a time
+stepBoundedWord :: e -> Int -> Word64 -> Int -> Parser e s Word64
+stepBoundedWord e !bitLimit !acc0 !accShift = do
   raw <- P.any e
   let number = raw .&. 0x7F
-  let acc1 = fromIntegral @Word8 @Word64 number + (acc0 * 0x80)
-  case testBit raw 7 of
-    True -> if acc1 < bound
-      then stepBoundedWord e bound acc1
+      acc1 = acc0 .|.
+        unsafeShiftL (fromIntegral @Word8 @Word64 number) accShift
+      accShift' = accShift + 7
+  if accShift' <= bitLimit
+    then if testBit raw 7
+      then stepBoundedWord e bitLimit acc1 accShift'
+      else pure acc1
+    else if fromIntegral @Word8 @Word raw < twoExp (bitLimit - accShift)
+      then pure acc1 -- TODO: no need to mask upper bit in number
       else P.fail e
-    False -> pure acc1
+
+twoExp :: Int -> Word
+twoExp x = unsafeShiftL 1 x
 
 -- Zigzag decode strategy taken from https://stackoverflow.com/a/2211086/1405768
 -- The accepted answer is a little bit, so an answer further down was used:
