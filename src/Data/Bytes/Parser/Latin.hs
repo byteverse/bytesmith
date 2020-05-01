@@ -50,6 +50,10 @@ module Data.Bytes.Parser.Latin
   , skipChar1
   , skipTrailedBy
   , skipUntil
+  , skipWhile
+    -- * End of Input
+  , endOfInput
+  , isEndOfInput
     -- * Numbers
     -- ** Decimal
     -- *** Unsigned
@@ -92,8 +96,8 @@ import Data.Bytes.Parser.Internal (InternalStep(..),unfailing)
 import Data.Bytes.Parser.Internal (Parser(..),ST#,uneffectful,Result#,uneffectful#)
 import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
 import Data.Bytes.Parser.Internal (boxBytes)
-import Data.Bytes.Parser (bindFromLiftedToInt)
-import Data.Bytes.Parser.Unsafe (expose,cursor)
+import Data.Bytes.Parser (bindFromLiftedToInt,isEndOfInput,endOfInput)
+import Data.Bytes.Parser.Unsafe (expose,cursor,unconsume)
 import Data.Word (Word8)
 import Data.Char (ord)
 import Data.Kind (Type)
@@ -1160,3 +1164,28 @@ unsignedPushBase10 (W# a) (W# b) =
       !cb = int2Word# (ltWord# r1 r0)
       !c = ca `or#` cb
    in (case c of { 0## -> False; _ -> True }, W# r1)
+
+-- | Skip while the predicate is matched. This is always inlined.
+skipWhile :: (Char -> Bool) -> Parser e s ()
+{-# inline skipWhile #-}
+skipWhile f = go where
+  go = isEndOfInput >>= \case
+    True -> pure ()
+    False -> do
+      w <- anyUnsafe
+      if f w
+        then go
+        else unconsume 1
+
+-- Interpret the next byte as an Latin1-encoded character.
+-- Does not check to see if any characters are left. This
+-- is not exported.
+anyUnsafe :: Parser e s Char
+{-# inline anyUnsafe #-}
+anyUnsafe = uneffectful $ \chunk ->
+  let w = indexCharArray (array chunk) (offset chunk) :: Char
+   in InternalSuccess w (offset chunk + 1) (length chunk - 1)
+
+-- Reads one byte and interprets it as Latin1-encoded character.
+indexCharArray :: PM.ByteArray -> Int -> Char
+indexCharArray (PM.ByteArray x) (I# i) = C# (indexCharArray# x i)
