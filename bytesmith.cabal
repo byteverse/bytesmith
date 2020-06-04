@@ -22,6 +22,7 @@ library
     Data.Bytes.Parser.BigEndian
     Data.Bytes.Parser.LittleEndian
     Data.Bytes.Parser.Ascii
+    Data.Bytes.Parser.Base128
     Data.Bytes.Parser.Latin
     Data.Bytes.Parser.Leb128
     Data.Bytes.Parser.Rebindable

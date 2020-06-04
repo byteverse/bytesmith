@@ -30,9 +30,10 @@ import qualified Data.Bits as Bits
 import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Parser as P
 import qualified Data.Bytes.Parser.Ascii as Ascii
+import qualified Data.Bytes.Parser.Base128 as Base128
+import qualified Data.Bytes.Parser.BigEndian as BigEndian
 import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.Bytes.Parser.Leb128 as Leb128
-import qualified Data.Bytes.Parser.BigEndian as BigEndian
 import qualified Data.Bytes.Parser.LittleEndian as LittleEndian
 import qualified Data.List as List
 import qualified Data.Primitive as PM
@@ -362,6 +363,24 @@ tests = testGroup "Parser"
         P.parseBytes (Latin.hexFixedWord64 ()) (bytes "ABCD01235678BCDE")
         @=? P.Success
         (Slice 17 0 0xABCD01235678BCDE)
+    ]
+  , testGroup "base128-w32"
+    [ testCase "A" $
+        P.Success (Slice 2 0 0x7E)
+        @=?
+        P.parseBytes (Base128.word32 ()) (bytes "\x7E")
+    , testCase "B" $
+        P.Success (Slice 5 0 0x200000)
+        @=?
+        P.parseBytes (Base128.word32 ()) (bytes "\x81\x80\x80\x00")
+    , testCase "C" $
+        P.Success (Slice 4 0 1656614)
+        @=?
+        P.parseBytes (Base128.word32 ()) (bytes "\xE5\x8E\x26")
+    -- , testProperty "iso" $ \w -> -- TODO
+    --     P.parseBytesMaybe (Base.word32 ()) (encodeBase128 (fromIntegral w))
+    --     ===
+    --     Just w
     ]
   , testGroup "leb128-w32"
     [ testCase "A" $
