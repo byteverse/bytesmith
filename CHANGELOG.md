@@ -2,6 +2,7 @@
 
 ## 0.3.7.0 -- 2020-??-??
 
+* Add `Data.Bytes.Parser.Base128` module for Base-128 encoding.
 * Add `Data.Bytes.Parser.Leb128` module for LEB-128 encoding.
   Supports signed integers with zig-zag encoding.
 * Add `skipWhile` to `Data.Bytes.Parser.Latin`.
