@@ -26,6 +26,8 @@ module Data.Bytes.Parser.Ascii
   , Latin.char2
   , Latin.char3
   , Latin.char4
+    -- * Case-Insensitive Matching
+  , charInsensitive
     -- * Get Character
   , any
   , any#
@@ -52,9 +54,11 @@ module Data.Bytes.Parser.Ascii
 
 import Prelude hiding (length,any,fail,takeWhile)
 
+import Data.Bits (clearBit)
 import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (Parser(..),uneffectful,Result#,uneffectful#)
 import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
+import Data.Char (ord)
 import Data.Word (Word8)
 import Data.Text.Short (ShortText)
 import Control.Monad.ST.Run (runByteArrayST)
@@ -67,6 +71,21 @@ import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.Bytes.Parser.Unsafe as Unsafe
 import qualified Data.Primitive as PM
+
+-- | Consume the next character, failing if it does not match the expected
+-- value or if there is no more input. This check for equality is case
+-- insensitive.
+--
+-- Precondition: The argument must be a letter (@[a-zA-Z]@). Behavior is
+-- undefined if it is not.
+charInsensitive :: e -> Char -> Parser e s ()
+charInsensitive e !c = uneffectful $ \chunk -> if length chunk > 0
+  then if clearBit (PM.indexByteArray (array chunk) (offset chunk) :: Word8) 5 == w
+    then InternalSuccess () (offset chunk + 1) (length chunk - 1)
+    else InternalFailure e
+  else InternalFailure e
+  where
+  w = clearBit (fromIntegral @Int @Word8 (ord c)) 5
 
 -- | Consume input until the trailer is found. Then, consume
 -- the trailer as well. This fails if the trailer is not

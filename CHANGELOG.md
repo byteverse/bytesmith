@@ -7,6 +7,7 @@
   Supports signed integers with zig-zag encoding.
 * Add `skipWhile` to `Data.Bytes.Parser.Latin`.
 * Reexport `endOfInput` and `isEndOfInput` from `Latin`.
+* Add `charInsensitive` to ASCII module.
 
 ## 0.3.6.0 -- 2020-03-04
 
