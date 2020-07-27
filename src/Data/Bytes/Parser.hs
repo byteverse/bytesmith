@@ -248,7 +248,7 @@ any e = uneffectful $ \chunk -> if length chunk > 0
 peek :: Parser e s (Maybe Word8)
 peek = uneffectful $ \chunk ->
   let v = if length chunk > 0
-        then Just (B.unsafeIndex chunk 1)
+        then Just (B.unsafeIndex chunk 0)
         else Nothing
   in InternalSuccess v (offset chunk) (length chunk)
 
@@ -256,7 +256,7 @@ peek = uneffectful $ \chunk ->
 --   input, but will fail if end of input has been reached.
 peek' :: e -> Parser e s Word8
 peek' e = uneffectful $ \chunk -> if length chunk > 0
-  then InternalSuccess (B.unsafeIndex chunk 1) (offset chunk) (length chunk)
+  then InternalSuccess (B.unsafeIndex chunk 0) (offset chunk) (length chunk)
   else InternalFailure e
 
 -- | A stateful scanner. The predicate consumes and transforms a

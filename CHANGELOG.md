@@ -1,6 +1,6 @@
 # Revision history for bytesmith
 
-## 0.3.7.0 -- 2020-??-??
+## 0.3.7.0 -- 2020-07-27
 
 * Add `Data.Bytes.Parser.Base128` module for Base-128 encoding.
 * Add `Data.Bytes.Parser.Leb128` module for LEB-128 encoding.
@@ -8,6 +8,7 @@
 * Add `skipWhile` to `Data.Bytes.Parser.Latin`.
 * Reexport `endOfInput` and `isEndOfInput` from `Latin`.
 * Add `charInsensitive` to ASCII module.
+* Correct implementation of `peek` and `peek'`.
 
 ## 0.3.6.0 -- 2020-03-04
 
