@@ -75,10 +75,31 @@ bindIntParser (Parser f) g = Parser
         runParser (g y) (# arr, b, c #) s1
   )
 
+bindWordParser :: forall (a :: TYPE 'WordRep) e s b.
+  Parser e s a -> (a -> Parser e s b) -> Parser e s b
+{-# inline bindWordParser #-}
+bindWordParser (Parser f) g = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# y, b, c #) #) ->
+        runParser (g y) (# arr, b, c #) s1
+  )
+
 sequenceIntParser :: forall (a :: TYPE 'IntRep) e s b.
   Parser e s a -> Parser e s b -> Parser e s b
 {-# inline sequenceIntParser #-}
 sequenceIntParser (Parser f) (Parser g) = Parser
+  (\x@(# arr, _, _ #) s0 -> case f x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> (# s1, (# e | #) #)
+      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+  )
+
+sequenceWordParser :: forall (a :: TYPE 'WordRep) e s b.
+  Parser e s a -> Parser e s b -> Parser e s b
+{-# inline sequenceWordParser #-}
+sequenceWordParser (Parser f) (Parser g) = Parser
   (\x@(# arr, _, _ #) s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# e | #) -> (# s1, (# e | #) #)
@@ -171,6 +192,12 @@ instance Bind 'LiftedRep 'LiftedRep where
   {-# inline (>>) #-}
   (>>=) = bindParser
   (>>) = sequenceParser
+
+instance Bind 'WordRep 'LiftedRep where
+  {-# inline (>>=) #-}
+  {-# inline (>>) #-}
+  (>>=) = bindWordParser
+  (>>) = sequenceWordParser
 
 instance Bind 'IntRep 'LiftedRep where
   {-# inline (>>=) #-}
