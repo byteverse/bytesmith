@@ -290,7 +290,8 @@ anyUnsafe = uneffectful $ \chunk ->
   let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
    in InternalSuccess w (offset chunk + 1) (length chunk - 1)
 
--- | Take while the predicate is matched. This is always inlined.
+-- | Take while the predicate is matched. This is always inlined. This
+-- always succeeds.
 takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
 {-# inline takeWhile #-}
 takeWhile f = uneffectful $ \chunk -> case B.takeWhile f chunk of
