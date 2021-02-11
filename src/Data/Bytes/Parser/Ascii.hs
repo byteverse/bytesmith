@@ -79,6 +79,7 @@ import qualified Data.Primitive as PM
 -- Precondition: The argument must be a letter (@[a-zA-Z]@). Behavior is
 -- undefined if it is not.
 charInsensitive :: e -> Char -> Parser e s ()
+{-# inline charInsensitive #-}
 charInsensitive e !c = uneffectful $ \chunk -> if length chunk > 0
   then if clearBit (PM.indexByteArray (array chunk) (offset chunk) :: Word8) 5 == w
     then InternalSuccess () (offset chunk + 1) (length chunk - 1)
@@ -91,6 +92,7 @@ charInsensitive e !c = uneffectful $ \chunk -> if length chunk > 0
 -- the trailer as well. This fails if the trailer is not
 -- found or if any non-ASCII characters are encountered.
 skipTrailedBy :: e -> Char -> Parser e s ()
+{-# inline skipTrailedBy #-}
 skipTrailedBy e !c = do
   let go = do
         !d <- any e
@@ -142,6 +144,7 @@ shortTrailedBy e !c = do
 
 -- | Consumes and returns the next character in the input.
 any :: e -> Parser e s Char
+{-# inline any #-}
 any e = uneffectful $ \chunk -> if length chunk > 0
   then
     let c = indexLatinCharArray (array chunk) (offset chunk)
@@ -164,12 +167,14 @@ any# e = Parser
   )
 
 unI :: Int -> Int#
+{-# inline unI #-}
 unI (I# w) = w
 
 -- | Examine the next byte without consuming it, interpret it as an
 -- ASCII-encoded character. This fails if the byte is above @0x7F@ or
 -- if the end of input has been reached.
 peek :: e -> Parser e s Char
+{-# inline peek #-}
 peek e = uneffectful $ \chunk -> if length chunk > 0
   then
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
@@ -218,18 +223,21 @@ skipWhile p = Parser
 -- | Skip uppercase and lowercase letters until a non-alpha
 -- character is encountered.
 skipAlpha :: Parser e s ()
+{-# inline skipAlpha #-}
 skipAlpha = uneffectful# $ \c ->
   upcastUnitSuccess (skipAlphaAsciiLoop c)
 
 -- | Skip uppercase and lowercase letters until a non-alpha
 -- character is encountered.
 skipAlpha1 :: e -> Parser e s ()
+{-# inline skipAlpha1 #-}
 skipAlpha1 e = uneffectful# $ \c ->
   skipAlphaAsciiLoop1Start e c
 
 skipAlphaAsciiLoop ::
      Bytes -- Chunk
   -> (# Int#, Int# #)
+{-# inline skipAlphaAsciiLoop #-}
 skipAlphaAsciiLoop !c = if length c > 0
   then
     let w = indexLatinCharArray (array c) (offset c)
@@ -242,6 +250,7 @@ skipAlphaAsciiLoop1Start ::
      e
   -> Bytes -- chunk
   -> Result# e ()
+{-# inline skipAlphaAsciiLoop1Start #-}
 skipAlphaAsciiLoop1Start e !c = if length c > 0
   then 
     let w = indexLatinCharArray (array c) (offset c)
@@ -251,5 +260,5 @@ skipAlphaAsciiLoop1Start e !c = if length c > 0
   else (# e | #)
 
 byteArrayToShortByteString :: PM.ByteArray -> BSS.ShortByteString
+{-# inline byteArrayToShortByteString #-}
 byteArrayToShortByteString (PM.ByteArray x) = BSS.SBS x
-

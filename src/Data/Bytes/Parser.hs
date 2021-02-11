@@ -121,6 +121,7 @@ import qualified GHC.Exts as Exts
 -- | Parse a byte sequence. This can succeed even if the
 -- entire slice was not consumed by the parser.
 parseBytes :: forall e a. (forall s. Parser e s a) -> Bytes -> Result e a
+{-# inline parseBytes #-}
 parseBytes p !b = runResultST action
   where
   action :: forall s. ST# s (Result# e a)
@@ -131,6 +132,7 @@ parseBytes p !b = runResultST action
 -- Just like 'parseBytesEither', this does not impose any checks on the length
 -- of the remaining input.
 parseBytesMaybe :: forall e a. (forall s. Parser e s a) -> Bytes -> Maybe a
+{-# inline parseBytesMaybe #-}
 parseBytesMaybe p !b = runMaybeST action
   where
   action :: forall s. ST# s (Result# e a)
@@ -141,6 +143,7 @@ parseBytesMaybe p !b = runMaybeST action
 -- remaining length. This does not, however, require the remaining
 -- length to be zero. Use 'endOfInput' to accomplish that.
 parseBytesEither :: forall e a. (forall s. Parser e s a) -> Bytes -> Either e a
+{-# inline parseBytesEither #-}
 parseBytesEither p !b = runEitherST action
   where
   action :: forall s. ST# s (Result# e a)
@@ -149,12 +152,14 @@ parseBytesEither p !b = runEitherST action
 
 -- Similar to runResultST
 runMaybeST :: (forall s. ST# s (Result# e x)) -> Maybe x
+{-# inline runMaybeST #-}
 runMaybeST f = case (runRW# (\s0 -> case f s0 of { (# _, r #) -> r })) of
   (# _ | #) -> Nothing
   (# | (# x, _, _ #) #) -> Just x
 
 -- Similar to runResultST
 runEitherST :: (forall s. ST# s (Result# e x)) -> Either e x
+{-# inline runEitherST #-}
 runEitherST f = case (runRW# (\s0 -> case f s0 of { (# _, r #) -> r })) of
   (# e | #) -> Left e
   (# | (# x, _, _ #) #) -> Right x
@@ -165,18 +170,21 @@ runEitherST f = case (runRW# (\s0 -> case f s0 of { (# _, r #) -> r })) of
 -- it avoids the additional boxing that the Success data
 -- constructor would normally cause.
 runResultST :: (forall s. ST# s (Result# e x)) -> Result e x
+{-# inline runResultST #-}
 runResultST f = case (runRW# (\s0 -> case f s0 of { (# _, r #) -> r })) of
   (# e | #) -> Failure e
   (# | (# x, off, len #) #) -> Success (Slice (I# off) (I# len) x)
 
 -- | Variant of 'parseBytes' that accepts an unsliced 'ByteArray'.
 parseByteArray :: (forall s. Parser e s a) -> ByteArray -> Result e a
+{-# inline parseByteArray #-}
 parseByteArray p b =
   parseBytes p (Bytes b 0 (PM.sizeofByteArray b))
 
 -- | Variant of 'parseBytes' that allows the parser to be run
 -- as part of an existing effectful context.
 parseBytesEffectfully :: Parser e s a -> Bytes -> ST s (Result e a)
+{-# inline parseBytesEffectfully #-}
 parseBytesEffectfully (Parser f) !b = ST
   (\s0 -> case f (unboxBytes b) s0 of
     (# s1, r #) -> (# s1, boxPublicResult r #)
@@ -184,12 +192,14 @@ parseBytesEffectfully (Parser f) !b = ST
 
 -- | Lift an effectful computation into a parser.
 effect :: ST s a -> Parser e s a
+{-# inline effect #-}
 effect (ST f) = Parser
   ( \(# _, off, len #) s0 -> case f s0 of
     (# s1, a #) -> (# s1, (# | (# a, off, len #) #) #)
   )
 
 byteArray :: e -> ByteArray -> Parser e s ()
+{-# inline byteArray #-}
 byteArray e !expected = bytes e (B.fromByteArray expected)
 
 -- | Consume input matching the byte sequence.
@@ -246,6 +256,7 @@ any e = uneffectful $ \chunk -> if length chunk > 0
 --   because such parsers loop until a failure occurs. Careless
 --   use will thus result in an infinite loop.
 peek :: Parser e s (Maybe Word8)
+{-# inline peek #-}
 peek = uneffectful $ \chunk ->
   let v = if length chunk > 0
         then Just (B.unsafeIndex chunk 0)
@@ -255,6 +266,7 @@ peek = uneffectful $ \chunk ->
 -- | Match any byte, to perform lookahead. Does not consume any
 --   input, but will fail if end of input has been reached.
 peek' :: e -> Parser e s Word8
+{-# inline peek' #-}
 peek' e = uneffectful $ \chunk -> if length chunk > 0
   then InternalSuccess (B.unsafeIndex chunk 0) (offset chunk) (length chunk)
   else InternalFailure e
@@ -271,6 +283,7 @@ peek' e = uneffectful $ \chunk -> if length chunk > 0
 --   combinators such a 'many', because such parsers loop until a
 --   failure occurs. Careless use will thus result in an infinite loop.
 scan :: state -> (state -> Word8 -> Maybe state) -> Parser e s state
+{-# inline scan #-}
 scan s0 t = do
   let go s = do
         mw <- peek
@@ -316,6 +329,7 @@ takeTrailedBy e !w = do
 -- | Skip all characters until the character from the is encountered
 -- and then consume the matching byte as well.
 skipTrailedBy :: e -> Word8 -> Parser e s ()
+{-# inline skipTrailedBy #-}
 skipTrailedBy e !w = uneffectful# (\c -> skipUntilConsumeByteLoop e w c)
 
 skipUntilConsumeByteLoop ::
@@ -338,6 +352,7 @@ skipTrailedBy2 ::
   -> Word8 -- ^ First trailer, @False@ indicates that this was encountered
   -> Word8 -- ^ Second trailer, @True@ indicates that this was encountered
   -> Parser e s Bool
+{-# inline skipTrailedBy2 #-}
 skipTrailedBy2 e !wa !wb = boxBool (skipTrailedBy2# e wa wb)
 
 skipTrailedBy2# ::
@@ -345,6 +360,7 @@ skipTrailedBy2# ::
   -> Word8 -- ^ First trailer, 0 indicates that this was encountered
   -> Word8 -- ^ Second trailer, 1 indicates that this was encountered
   -> Parser e s Int#
+{-# inline skipTrailedBy2# #-}
 skipTrailedBy2# e !wa !wb =
   uneffectfulInt# (\c -> skipUntilConsumeByteEitherLoop e wa wb c)
 
@@ -354,6 +370,7 @@ skipTrailedBy3# ::
   -> Word8 -- ^ Second trailer, 1 indicates that this was encountered
   -> Word8 -- ^ Third trailer, 2 indicates that this was encountered
   -> Parser e s Int#
+{-# inline skipTrailedBy3# #-}
 skipTrailedBy3# e !wa !wb !wc =
   uneffectfulInt# (\c -> skipUntilConsumeByte3Loop e wa wb wc c)
 
@@ -429,6 +446,7 @@ satisfy e p = satisfyWith e id p
 --   if the predicate @p@ returns 'True' on the transformed value.
 --   The parser returns the transformed byte that was parsed.
 satisfyWith :: e -> (Word8 -> a) -> (a -> Bool) -> Parser e s a
+{-# inline satisfyWith #-}
 satisfyWith e f p = uneffectful $ \chunk -> if length chunk > 1
   then case B.unsafeIndex chunk 1 of
     w ->
@@ -440,7 +458,7 @@ satisfyWith e f p = uneffectful $ \chunk -> if length chunk > 1
 
 -- | Fails if there is still more input remaining.
 endOfInput :: e -> Parser e s ()
--- GHC should decide to inline this after optimization.
+{-# inline endOfInput #-}
 endOfInput e = uneffectful $ \chunk -> if length chunk == 0
   then InternalSuccess () (offset chunk) 0
   else InternalFailure e
@@ -448,16 +466,18 @@ endOfInput e = uneffectful $ \chunk -> if length chunk == 0
 -- | Returns true if there are no more bytes in the input. Returns
 -- false otherwise. Always succeeds.
 isEndOfInput :: Parser e s Bool
--- GHC should decide to inline this after optimization.
+{-# inline isEndOfInput #-}
 isEndOfInput = uneffectful $ \chunk ->
   InternalSuccess (length chunk == 0) (offset chunk) (length chunk)
 
 boxPublicResult :: Result# e a -> Result e a
+{-# inline boxPublicResult #-}
 boxPublicResult (# | (# a, b, c #) #) = Success (Slice (I# b) (I# c) a)
 boxPublicResult (# e | #) = Failure e
 
 -- | Convert a 'Word32' parser to a 'Word#' parser.
 unboxWord32 :: Parser e s Word32 -> Parser e s Word#
+{-# inline unboxWord32 #-}
 unboxWord32 (Parser f) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r #) -> case r of
@@ -467,6 +487,7 @@ unboxWord32 (Parser f) = Parser
 
 -- | Convert a @(Int,Int)@ parser to a @(# Int#, Int# #)@ parser.
 unboxIntPair :: Parser e s (Int,Int) -> Parser e s (# Int#, Int# #)
+{-# inline unboxIntPair #-}
 unboxIntPair (Parser f) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r #) -> case r of
@@ -477,6 +498,7 @@ unboxIntPair (Parser f) = Parser
 -- | Convert a 'Word#' parser to a 'Word32' parser. Precondition:
 -- the argument parser only returns words less than 4294967296.
 boxWord32 :: Parser e s Word# -> Parser e s Word32
+{-# inline boxWord32 #-}
 boxWord32 (Parser f) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r #) -> case r of
@@ -506,6 +528,7 @@ boxBool (Parser f) = Parser
 
 -- | Convert a @(# Int#, Int# #)@ parser to a @(Int,Int)@ parser.
 boxIntPair :: Parser e s (# Int#, Int# #) -> Parser e s (Int,Int)
+{-# inline boxIntPair #-}
 boxIntPair (Parser f) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r #) -> case r of
@@ -665,6 +688,7 @@ delimit ::
   -> Int -- ^ Exact number of bytes delimited parser is expected to consume
   -> Parser e s a -- ^ Parser to execute in delimited context
   -> Parser e s a
+{-# inline delimit #-}
 delimit esz eleftovers (I# n) (Parser f) = Parser
   ( \(# arr, off, len #) s0 -> case len >=# n of
     1# -> case f (# arr, off, n #) s0 of
@@ -697,4 +721,5 @@ replicate !len p = do
   go 0
 
 unI :: Int -> Int#
+{-# inline unI #-}
 unI (I# w) = w
