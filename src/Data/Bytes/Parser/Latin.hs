@@ -144,7 +144,7 @@ trySatisfyThen (Parser g) f = Parser
 -- | Consume the next character, failing if it does not
 -- match the expected value or if there is no more input.
 char :: e -> Char -> Parser e s ()
--- GHC should decide to inline this after optimization.
+{-# inline char #-}
 char e !c = uneffectful $ \chunk -> if length chunk > 0
   then if indexLatinCharArray (array chunk) (offset chunk) == c
     then InternalSuccess () (offset chunk + 1) (length chunk - 1)
@@ -156,7 +156,7 @@ char e !c = uneffectful $ \chunk -> if length chunk > 0
 --
 -- > char2 e a b === char e a *> char e b
 char2 :: e -> Char -> Char -> Parser e s ()
--- GHC should decide to inline this after optimization.
+{-# inline char2 #-}
 char2 e !c0 !c1 = uneffectful $ \chunk ->
   if | length chunk > 1
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -169,7 +169,7 @@ char2 e !c0 !c1 = uneffectful $ \chunk ->
 --
 -- > char3 e a b c === char e a *> char e b *> char e c
 char3 :: e -> Char -> Char -> Char -> Parser e s ()
--- GHC should decide to inline this after optimization.
+{-# inline char3 #-}
 char3 e !c0 !c1 !c2 = uneffectful $ \chunk ->
   if | length chunk > 2
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -183,7 +183,7 @@ char3 e !c0 !c1 !c2 = uneffectful $ \chunk ->
 --
 -- > char4 e a b c d === char e a *> char e b *> char e c *> char e d
 char4 :: e -> Char -> Char -> Char -> Char -> Parser e s ()
--- GHC should decide to inline this after optimization.
+{-# inline char4 #-}
 char4 e !c0 !c1 !c2 !c3 = uneffectful $ \chunk ->
   if | length chunk > 3
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -196,6 +196,7 @@ char4 e !c0 !c1 !c2 !c3 = uneffectful $ \chunk ->
 -- | Consume five characters, failing if they do
 -- not match the expected values.
 char5 :: e -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+{-# inline char5 #-}
 char5 e !c0 !c1 !c2 !c3 !c4 = uneffectful $ \chunk ->
   if | length chunk > 4
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -209,6 +210,7 @@ char5 e !c0 !c1 !c2 !c3 !c4 = uneffectful $ \chunk ->
 -- | Consume six characters, failing if they do
 -- not match the expected values.
 char6 :: e -> Char -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+{-# inline char6 #-}
 char6 e !c0 !c1 !c2 !c3 !c4 !c5 = uneffectful $ \chunk ->
   if | length chunk > 5
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -223,6 +225,7 @@ char6 e !c0 !c1 !c2 !c3 !c4 !c5 = uneffectful $ \chunk ->
 -- | Consume seven characters, failing if they do
 -- not match the expected values.
 char7 :: e -> Char -> Char -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+{-# inline char7 #-}
 char7 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 = uneffectful $ \chunk ->
   if | length chunk > 6
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -238,6 +241,7 @@ char7 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 = uneffectful $ \chunk ->
 -- | Consume eight characters, failing if they do
 -- not match the expected values.
 char8 :: e -> Char -> Char -> Char -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+{-# inline char8 #-}
 char8 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 = uneffectful $ \chunk ->
   if | length chunk > 7
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -255,6 +259,7 @@ char8 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 = uneffectful $ \chunk ->
 -- not match the expected values.
 char9 :: e -> Char -> Char -> Char -> Char
   -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+{-# inline char9 #-}
 char9 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 = uneffectful $ \chunk ->
   if | length chunk > 8
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -273,6 +278,7 @@ char9 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 = uneffectful $ \chunk ->
 -- not match the expected values.
 char10 :: e -> Char -> Char -> Char -> Char -> Char
   -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+{-# inline char10 #-}
 char10 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 = uneffectful $ \chunk ->
   if | length chunk > 9
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -292,6 +298,7 @@ char10 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 = uneffectful $ \chunk ->
 -- not match the expected values.
 char11 :: e -> Char -> Char -> Char -> Char -> Char -> Char
   -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+{-# inline char11 #-}
 char11 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 !c10 = uneffectful $ \chunk ->
   if | length chunk > 10
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -312,6 +319,7 @@ char11 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 !c10 = uneffectful $ \chunk ->
 -- not match the expected values.
 char12 :: e -> Char -> Char -> Char -> Char -> Char -> Char
   -> Char -> Char -> Char -> Char -> Char -> Char -> Parser e s ()
+{-# inline char12 #-}
 char12 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 !c10 !c11 = uneffectful $ \chunk ->
   if | length chunk > 11
      , indexLatinCharArray (array chunk) (offset chunk) == c0
@@ -331,6 +339,7 @@ char12 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 !c10 !c11 = uneffectful $ \chun
 
 -- | Consumes and returns the next character in the input.
 any :: e -> Parser e s Char
+{-# inline any #-}
 any e = uneffectful $ \chunk -> if length chunk > 0
   then
     let c = indexLatinCharArray (array chunk) (offset chunk)
@@ -341,6 +350,7 @@ any e = uneffectful $ \chunk -> if length chunk > 0
 -- end of the stream has been reached. Since ISO 8859-1 maps every
 -- bytes to a character, this parser never fails.
 opt :: Parser e s (Maybe Char)
+{-# inline opt #-}
 opt = uneffectful $ \chunk -> case length chunk of
   0 -> InternalSuccess Nothing (offset chunk) (length chunk)
   _ -> InternalSuccess
@@ -382,6 +392,7 @@ skipDigitsAscii1LoopStart e !c = if length c > 0
 -- | Variant of 'skipDigits' that requires at least one digit
 -- to be present.
 skipDigits1 :: e -> Parser e s ()
+{-# inline skipDigits1 #-}
 skipDigits1 e = uneffectful# $ \c ->
   skipDigitsAscii1LoopStart e c
 
@@ -397,12 +408,14 @@ unI (I# w) = w
 -- | Skip the character any number of times. This succeeds
 -- even if the character was not present.
 skipChar :: Char -> Parser e s ()
+{-# inline skipChar #-}
 skipChar !w = uneffectful# $ \c ->
   upcastUnitSuccess (skipLoop w c)
 
 -- | Skip the character any number of times. It must occur
 -- at least once or else this will fail.
 skipChar1 :: e -> Char -> Parser e s ()
+{-# inline skipChar1 #-}
 skipChar1 e !w = uneffectful# $ \c ->
   skipLoop1Start e w c
 
@@ -539,11 +552,13 @@ decWordMore e !acc !chunk0 = case len of
   !len@(I# len# ) = length chunk0
 
 upcastWordResult :: Result# e Word# -> Result# e Word
+{-# inline upcastWordResult #-}
 upcastWordResult (# e | #) = (# e | #)
 upcastWordResult (# | (# a, b, c #) #) = (# | (# W# a, b, c #) #)
 
 -- This only works on 64-bit platforms.
 upcastWord64Result :: Result# e Word# -> Result# e Word64
+{-# inline upcastWord64Result #-}
 upcastWord64Result (# e | #) = (# e | #)
 upcastWord64Result (# | (# a, b, c #) #) = (# | (# W64# a, b, c #) #)
 
@@ -599,16 +614,19 @@ decWordStart e !chunk0 s0 = if length chunk0 > 0
 
 -- Precondition: the word is small enough
 upcastWord16Result :: Result# e Word# -> Result# e Word16
+{-# inline upcastWord16Result #-}
 upcastWord16Result (# e | #) = (# e | #)
 upcastWord16Result (# | (# a, b, c #) #) = (# | (# W16# a, b, c #) #)
 
 -- Precondition: the word is small enough
 upcastWord32Result :: Result# e Word# -> Result# e Word32
+{-# inline upcastWord32Result #-}
 upcastWord32Result (# e | #) = (# e | #)
 upcastWord32Result (# | (# a, b, c #) #) = (# | (# W32# a, b, c #) #)
 
 -- Precondition: the word is small enough
 upcastWord8Result :: Result# e Word# -> Result# e Word8
+{-# inline upcastWord8Result #-}
 upcastWord8Result (# e | #) = (# e | #)
 upcastWord8Result (# | (# a, b, c #) #) = (# | (# W8# a, b, c #) #)
 
@@ -1126,6 +1144,7 @@ tryHexNibble = unfailing $ \chunk -> case length chunk of
 -- Returns the maximum machine word if the argument is not
 -- the ASCII encoding of a hexadecimal digit.
 oneHex :: Word8 -> Word
+{-# inline oneHex #-}
 oneHex w
   | w >= 48 && w < 58 = (fromIntegral w - 48)
   | w >= 65 && w < 71 = (fromIntegral w - 55)
@@ -1141,6 +1160,7 @@ oneHexMaybe w
   | otherwise = Nothing
 
 uneffectfulWord# :: (Bytes -> Result# e Word#) -> Parser e s Word#
+{-# inline uneffectfulWord# #-}
 uneffectfulWord# f = Parser
   ( \b s0 -> (# s0, (f (boxBytes b)) #) )
 
@@ -1149,6 +1169,7 @@ uneffectfulWord# f = Parser
 -- Postcondition: when overflow is false, the resulting
 -- word is less than or equal to the upper bound
 positivePushBase10 :: Word -> Word -> Word -> (Bool,Word)
+{-# inline positivePushBase10 #-}
 positivePushBase10 (W# a) (W# b) (W# upper) = 
   let !(# ca, r0 #) = Exts.timesWord2# a 10##
       !r1 = Exts.plusWord# r0 b
@@ -1158,6 +1179,7 @@ positivePushBase10 (W# a) (W# b) (W# upper) =
    in (case c of { 0## -> False; _ -> True }, W# r1)
 
 unsignedPushBase10 :: Word -> Word -> (Bool,Word)
+{-# inline unsignedPushBase10 #-}
 unsignedPushBase10 (W# a) (W# b) = 
   let !(# ca, r0 #) = Exts.timesWord2# a 10##
       !r1 = Exts.plusWord# r0 b
@@ -1188,4 +1210,5 @@ anyUnsafe = uneffectful $ \chunk ->
 
 -- Reads one byte and interprets it as Latin1-encoded character.
 indexCharArray :: PM.ByteArray -> Int -> Char
+{-# inline indexCharArray #-}
 indexCharArray (PM.ByteArray x) (I# i) = C# (indexCharArray# x i)

@@ -99,6 +99,7 @@ type Result# e (a :: TYPE r) =
   | (# a, Int#, Int# #) #) -- ints are offset and length
 
 unboxResult :: InternalResult e a -> Result# e a
+{-# inline unboxResult #-}
 unboxResult (InternalSuccess a (I# b) (I# c)) = (# | (# a, b, c #) #)
 unboxResult (InternalFailure e) = (# e | #)
 
@@ -122,6 +123,7 @@ instance Monoid e => Alternative (Parser e s) where
 fail ::
      e -- ^ Error message
   -> Parser e s a
+{-# inline fail #-}
 fail e = uneffectful $ \_ -> InternalFailure e
 
 instance Applicative (Parser e s) where
