@@ -1,5 +1,9 @@
 # Revision history for bytesmith
 
+## 0.3.8.0 -- 2021-??-??
+
+* Add `peek` and `peek'` to `Data.Bytes.Parser.Latin`.
+
 ## 0.3.7.0 -- 2020-07-27
 
 * Add `Data.Bytes.Parser.Base128` module for Base-128 encoding.

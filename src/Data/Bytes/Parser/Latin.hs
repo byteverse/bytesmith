@@ -43,6 +43,9 @@ module Data.Bytes.Parser.Latin
   , opt#
     -- * Many Characters
   , takeTrailedBy
+    -- * Lookahead
+  , peek
+  , peek'
     -- * Skip
   , skipDigits
   , skipDigits1
@@ -1212,3 +1215,26 @@ anyUnsafe = uneffectful $ \chunk ->
 indexCharArray :: PM.ByteArray -> Int -> Char
 {-# inline indexCharArray #-}
 indexCharArray (PM.ByteArray x) (I# i) = C# (indexCharArray# x i)
+
+-- | Match any character, to perform lookahead. Returns 'Nothing' if
+--   end of input has been reached. Does not consume any input.
+--
+--   /Note/: Because this parser does not fail, do not use it
+--   with combinators such as 'many', because such as 'many',
+--   because such parsers loop until a failure occurs. Careless
+--   use will thus result in an infinite loop.
+peek :: Parser e s (Maybe Char)
+{-# inline peek #-}
+peek = uneffectful $ \(Bytes arr off len) ->
+  let v = if len > 0
+        then Just (indexCharArray arr off)
+        else Nothing
+  in InternalSuccess v off len
+
+-- | Match any byte, to perform lookahead. Does not consume any
+--   input, but will fail if end of input has been reached.
+peek' :: e -> Parser e s Char
+{-# inline peek' #-}
+peek' e = uneffectful $ \(Bytes arr off len) -> if len > 0
+  then InternalSuccess (indexCharArray arr off) off len
+  else InternalFailure e
