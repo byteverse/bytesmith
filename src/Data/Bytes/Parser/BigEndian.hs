@@ -45,7 +45,7 @@ import Control.Applicative (liftA2)
 import Data.Bits ((.|.),unsafeShiftL)
 import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (Parser,uneffectful)
-import Data.Bytes.Parser.Internal (InternalResult(..))
+import Data.Bytes.Parser.Internal (Result(..))
 import Data.Bytes.Parser.Internal (swapArray16,swapArray32,swapArray64,swapArray256)
 import Data.Bytes.Parser.Internal (swapArray128)
 import Data.Word (Word8,Word16,Word32,Word64)
@@ -146,10 +146,10 @@ word16 e = uneffectful $ \chunk -> if length chunk >= 2
   then
     let wa = PM.indexByteArray (array chunk) (offset chunk) :: Word8
         wb = PM.indexByteArray (array chunk) (offset chunk + 1) :: Word8
-     in InternalSuccess
+     in Success
           (fromIntegral @Word @Word16 (unsafeShiftL (fromIntegral wa) 8 .|. fromIntegral wb))
           (offset chunk + 2) (length chunk - 2)
-  else InternalFailure e
+  else Failure e
 
 -- | Unsigned 32-bit word.
 word32 :: e -> Parser e s Word32
@@ -159,7 +159,7 @@ word32 e = uneffectful $ \chunk -> if length chunk >= 4
         wb = PM.indexByteArray (array chunk) (offset chunk + 1) :: Word8
         wc = PM.indexByteArray (array chunk) (offset chunk + 2) :: Word8
         wd = PM.indexByteArray (array chunk) (offset chunk + 3) :: Word8
-     in InternalSuccess
+     in Success
           (fromIntegral @Word @Word32
             ( unsafeShiftL (fromIntegral wa) 24 .|.
               unsafeShiftL (fromIntegral wb) 16 .|.
@@ -168,7 +168,7 @@ word32 e = uneffectful $ \chunk -> if length chunk >= 4
             )
           )
           (offset chunk + 4) (length chunk - 4)
-  else InternalFailure e
+  else Failure e
 
 -- | Unsigned 64-bit word.
 word64 :: e -> Parser e s Word64
@@ -182,7 +182,7 @@ word64 e = uneffectful $ \chunk -> if length chunk >= 8
         wf = PM.indexByteArray (array chunk) (offset chunk + 5) :: Word8
         wg = PM.indexByteArray (array chunk) (offset chunk + 6) :: Word8
         wh = PM.indexByteArray (array chunk) (offset chunk + 7) :: Word8
-     in InternalSuccess
+     in Success
           ( unsafeShiftL (fromIntegral wa) 56 .|.
             unsafeShiftL (fromIntegral wb) 48 .|.
             unsafeShiftL (fromIntegral wc) 40 .|.
@@ -193,7 +193,7 @@ word64 e = uneffectful $ \chunk -> if length chunk >= 8
             fromIntegral wh
           )
           (offset chunk + 8) (length chunk - 8)
-  else InternalFailure e
+  else Failure e
 
 -- | Unsigned 128-bit word.
 word128 :: e -> Parser e s Word128
