@@ -30,6 +30,7 @@ module Data.Bytes.Parser.Unsafe
   , unconsume
   , jump
   , uneffectful
+  , Result(..)
   ) where
 
 import Prelude hiding (length)
