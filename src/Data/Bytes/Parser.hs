@@ -100,7 +100,7 @@ module Data.Bytes.Parser
 
 import Prelude hiding (length,any,fail,takeWhile,take,replicate)
 
-import Data.Bytes.Parser.Internal (InternalResult(..),Parser(..),ST#,unboxBytes)
+import Data.Bytes.Parser.Internal (Parser(..),ST#,unboxBytes)
 import Data.Bytes.Parser.Internal (boxBytes,Result#,uneffectful,fail)
 import Data.Bytes.Parser.Internal (uneffectful#,uneffectfulInt#)
 import Data.Bytes.Parser.Types (Result(Failure,Success),Slice(Slice))
@@ -114,6 +114,7 @@ import GHC.Word (Word32(W32#),Word8)
 import Data.Primitive.Contiguous (Contiguous,Element)
 
 import qualified Data.Bytes as B
+import qualified Data.Bytes.Parser.Internal as Internal
 import qualified Data.Primitive as PM
 import qualified Data.Primitive.Contiguous as C
 import qualified GHC.Exts as Exts
@@ -245,8 +246,8 @@ any :: e -> Parser e s Word8
 any e = uneffectful $ \chunk -> if length chunk > 0
   then
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
-     in InternalSuccess w (offset chunk + 1) (length chunk - 1)
-  else InternalFailure e
+     in Internal.Success w (offset chunk + 1) (length chunk - 1)
+  else Internal.Failure e
 
 -- | Match any byte, to perform lookahead. Returns 'Nothing' if
 --   end of input has been reached. Does not consume any input.
@@ -261,15 +262,15 @@ peek = uneffectful $ \chunk ->
   let v = if length chunk > 0
         then Just (B.unsafeIndex chunk 0)
         else Nothing
-  in InternalSuccess v (offset chunk) (length chunk)
+  in Internal.Success v (offset chunk) (length chunk)
 
 -- | Match any byte, to perform lookahead. Does not consume any
 --   input, but will fail if end of input has been reached.
 peek' :: e -> Parser e s Word8
 {-# inline peek' #-}
 peek' e = uneffectful $ \chunk -> if length chunk > 0
-  then InternalSuccess (B.unsafeIndex chunk 0) (offset chunk) (length chunk)
-  else InternalFailure e
+  then Internal.Success (B.unsafeIndex chunk 0) (offset chunk) (length chunk)
+  else Internal.Failure e
 
 -- | A stateful scanner. The predicate consumes and transforms a
 --   state argument, and each transformed state is passed to
@@ -301,14 +302,14 @@ anyUnsafe :: Parser e s Word8
 {-# inline anyUnsafe #-}
 anyUnsafe = uneffectful $ \chunk ->
   let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
-   in InternalSuccess w (offset chunk + 1) (length chunk - 1)
+   in Internal.Success w (offset chunk + 1) (length chunk - 1)
 
 -- | Take while the predicate is matched. This is always inlined. This
 -- always succeeds.
 takeWhile :: (Word8 -> Bool) -> Parser e s Bytes
 {-# inline takeWhile #-}
 takeWhile f = uneffectful $ \chunk -> case B.takeWhile f chunk of
-  bs -> InternalSuccess bs (offset chunk + length bs) (length chunk - length bs)
+  bs -> Internal.Success bs (offset chunk + length bs) (length chunk - length bs)
 
 -- | Take bytes until the specified byte is encountered. Consumes
 -- the matched byte as well. Fails if the byte is not present.
@@ -408,20 +409,20 @@ take :: e -> Int -> Parser e s Bytes
 {-# inline take #-}
 take e n = uneffectful $ \chunk -> if n <= B.length chunk
   then case B.unsafeTake n chunk of
-    bs -> InternalSuccess bs (offset chunk + n) (length chunk - n)
-  else InternalFailure e
+    bs -> Internal.Success bs (offset chunk + n) (length chunk - n)
+  else Internal.Failure e
 
 -- | Consume all remaining bytes in the input.
 remaining :: Parser e s Bytes
 {-# inline remaining #-}
 remaining = uneffectful $ \chunk ->
-  InternalSuccess chunk (offset chunk + length chunk) 0
+  Internal.Success chunk (offset chunk + length chunk) 0
 
 -- | Return all remaining bytes in the input without consuming them.
 peekRemaining :: Parser e s Bytes
 {-# inline peekRemaining #-}
 peekRemaining = uneffectful $ \b@(Bytes _ off len) ->
-  InternalSuccess b off len
+  Internal.Success b off len
 
 -- | Skip while the predicate is matched. This is always inlined.
 skipWhile :: (Word8 -> Bool) -> Parser e s ()
@@ -452,23 +453,23 @@ satisfyWith e f p = uneffectful $ \chunk -> if length chunk > 1
     w ->
       let v = f w
       in if p v
-        then InternalSuccess v (offset chunk + 1) (length chunk - 1)
-        else InternalFailure e
-  else InternalFailure e
+        then Internal.Success v (offset chunk + 1) (length chunk - 1)
+        else Internal.Failure e
+  else Internal.Failure e
 
 -- | Fails if there is still more input remaining.
 endOfInput :: e -> Parser e s ()
 {-# inline endOfInput #-}
 endOfInput e = uneffectful $ \chunk -> if length chunk == 0
-  then InternalSuccess () (offset chunk) 0
-  else InternalFailure e
+  then Internal.Success () (offset chunk) 0
+  else Internal.Failure e
 
 -- | Returns true if there are no more bytes in the input. Returns
 -- false otherwise. Always succeeds.
 isEndOfInput :: Parser e s Bool
 {-# inline isEndOfInput #-}
 isEndOfInput = uneffectful $ \chunk ->
-  InternalSuccess (length chunk == 0) (offset chunk) (length chunk)
+  Internal.Success (length chunk == 0) (offset chunk) (length chunk)
 
 boxPublicResult :: Result# e a -> Result e a
 {-# inline boxPublicResult #-}

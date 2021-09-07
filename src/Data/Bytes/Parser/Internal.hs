@@ -19,7 +19,7 @@
 
 module Data.Bytes.Parser.Internal
   ( Parser(..)
-  , InternalResult(..)
+  , Result(..)
   , InternalStep(..)
   , Bytes#
   , ST#
@@ -63,16 +63,16 @@ newtype Parser :: forall (r :: RuntimeRep). Type -> Type -> TYPE r -> Type where
     { runParser :: (# ByteArray#, Int#, Int# #) -> ST# s (Result# e a) } -> Parser e s a
 
 -- The result of running a parser. Used internally.
-data InternalResult e a
-  = InternalFailure e
+data Result e a
+  = Failure e
     -- An error message indicating what went wrong.
-  | InternalSuccess !a !Int !Int
+  | Success !a !Int !Int
     -- The parsed value, the offset after the last consumed byte, and the
     -- number of bytes remaining in parsed slice.
 
 data InternalStep a = InternalStep !a !Int !Int
 
-uneffectful :: (Bytes -> InternalResult e a) -> Parser e s a
+uneffectful :: (Bytes -> Result e a) -> Parser e s a
 {-# inline uneffectful #-}
 uneffectful f = Parser
   ( \b s0 -> (# s0, unboxResult (f (boxBytes b)) #) )
@@ -98,10 +98,10 @@ type Result# e (a :: TYPE r) =
   (# e
   | (# a, Int#, Int# #) #) -- ints are offset and length
 
-unboxResult :: InternalResult e a -> Result# e a
+unboxResult :: Result e a -> Result# e a
 {-# inline unboxResult #-}
-unboxResult (InternalSuccess a (I# b) (I# c)) = (# | (# a, b, c #) #)
-unboxResult (InternalFailure e) = (# e | #)
+unboxResult (Success a (I# b) (I# c)) = (# | (# a, b, c #) #)
+unboxResult (Failure e) = (# e | #)
 
 -- | Combines the error messages using '<>' when both
 -- parsers fail.
@@ -124,7 +124,7 @@ fail ::
      e -- ^ Error message
   -> Parser e s a
 {-# inline fail #-}
-fail e = uneffectful $ \_ -> InternalFailure e
+fail e = uneffectful $ \_ -> Failure e
 
 instance Applicative (Parser e s) where
   pure = pureParser

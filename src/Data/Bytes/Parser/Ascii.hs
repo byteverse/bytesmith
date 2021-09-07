@@ -57,7 +57,7 @@ import Prelude hiding (length,any,fail,takeWhile)
 import Data.Bits (clearBit)
 import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (Parser(..),uneffectful,Result#,uneffectful#)
-import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
+import Data.Bytes.Parser.Internal (Result(..),indexLatinCharArray,upcastUnitSuccess)
 import Data.Char (ord)
 import Data.Word (Word8)
 import Data.Text.Short (ShortText)
@@ -82,9 +82,9 @@ charInsensitive :: e -> Char -> Parser e s ()
 {-# inline charInsensitive #-}
 charInsensitive e !c = uneffectful $ \chunk -> if length chunk > 0
   then if clearBit (PM.indexByteArray (array chunk) (offset chunk) :: Word8) 5 == w
-    then InternalSuccess () (offset chunk + 1) (length chunk - 1)
-    else InternalFailure e
-  else InternalFailure e
+    then Success () (offset chunk + 1) (length chunk - 1)
+    else Failure e
+  else Failure e
   where
   w = clearBit (fromIntegral @Int @Word8 (ord c)) 5
 
@@ -149,9 +149,9 @@ any e = uneffectful $ \chunk -> if length chunk > 0
   then
     let c = indexLatinCharArray (array chunk) (offset chunk)
      in if c < '\128'
-          then InternalSuccess c (offset chunk + 1) (length chunk - 1)
-          else InternalFailure e
-  else InternalFailure e
+          then Success c (offset chunk + 1) (length chunk - 1)
+          else Failure e
+  else Failure e
 
 -- | Variant of 'any' with unboxed result.
 any# :: e -> Parser e s Char#
@@ -179,12 +179,12 @@ peek e = uneffectful $ \chunk -> if length chunk > 0
   then
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
      in if w < 128
-          then InternalSuccess
+          then Success
                  (C# (chr# (unI (fromIntegral w))))
                  (offset chunk)
                  (length chunk)
-          else InternalFailure e
-  else InternalFailure e
+          else Failure e
+  else Failure e
 
 -- | Consume the next byte, interpreting it as an ASCII-encoded character.
 -- Fails if the byte is above @0x7F@. Returns @Nothing@ if the
@@ -195,12 +195,12 @@ opt e = uneffectful $ \chunk -> if length chunk > 0
   then
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8
      in if w < 128
-          then InternalSuccess
+          then Success
                  (Just (C# (chr# (unI (fromIntegral w)))))
                  (offset chunk + 1)
                  (length chunk - 1)
-          else InternalFailure e
-  else InternalSuccess Nothing (offset chunk) (length chunk)
+          else Failure e
+  else Success Nothing (offset chunk) (length chunk)
 
 -- | Consume characters matching the predicate. The stops when it
 -- encounters a non-matching character or when it encounters a byte

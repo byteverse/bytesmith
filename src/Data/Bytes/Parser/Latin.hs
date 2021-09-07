@@ -97,7 +97,7 @@ import Data.Bits ((.|.))
 import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (InternalStep(..),unfailing)
 import Data.Bytes.Parser.Internal (Parser(..),ST#,uneffectful,Result#,uneffectful#)
-import Data.Bytes.Parser.Internal (InternalResult(..),indexLatinCharArray,upcastUnitSuccess)
+import Data.Bytes.Parser.Internal (Result(..),indexLatinCharArray,upcastUnitSuccess)
 import Data.Bytes.Parser.Internal (boxBytes)
 import Data.Bytes.Parser (bindFromLiftedToInt,isEndOfInput,endOfInput)
 import Data.Bytes.Parser.Unsafe (expose,cursor,unconsume)
@@ -119,10 +119,10 @@ import qualified Data.Primitive as PM
 -- of the input has been reached. This never fails.
 trySatisfy :: (Char -> Bool) -> Parser e s Bool
 trySatisfy f = uneffectful $ \chunk -> case length chunk of
-  0 -> InternalSuccess False (offset chunk) (length chunk)
+  0 -> Success False (offset chunk) (length chunk)
   _ -> case f (indexLatinCharArray (array chunk) (offset chunk)) of
-    True -> InternalSuccess True (offset chunk + 1) (length chunk - 1)
-    False -> InternalSuccess False (offset chunk) (length chunk)
+    True -> Success True (offset chunk + 1) (length chunk - 1)
+    False -> Success False (offset chunk) (length chunk)
 
 -- | Runs the function on the next character in the input. If the
 -- function returns @Just@, this consumes the character and then
@@ -150,9 +150,9 @@ char :: e -> Char -> Parser e s ()
 {-# inline char #-}
 char e !c = uneffectful $ \chunk -> if length chunk > 0
   then if indexLatinCharArray (array chunk) (offset chunk) == c
-    then InternalSuccess () (offset chunk + 1) (length chunk - 1)
-    else InternalFailure e
-  else InternalFailure e
+    then Success () (offset chunk + 1) (length chunk - 1)
+    else Failure e
+  else Failure e
 
 -- | Consume the next two characters, failing if they do
 -- not match the expected values.
@@ -164,8 +164,8 @@ char2 e !c0 !c1 = uneffectful $ \chunk ->
   if | length chunk > 1
      , indexLatinCharArray (array chunk) (offset chunk) == c0
      , indexLatinCharArray (array chunk) (offset chunk + 1) == c1
-         -> InternalSuccess () (offset chunk + 2) (length chunk - 2)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 2) (length chunk - 2)
+     | otherwise -> Failure e
 
 -- | Consume three characters, failing if they do
 -- not match the expected values.
@@ -178,8 +178,8 @@ char3 e !c0 !c1 !c2 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk) == c0
      , indexLatinCharArray (array chunk) (offset chunk + 1) == c1
      , indexLatinCharArray (array chunk) (offset chunk + 2) == c2
-         -> InternalSuccess () (offset chunk + 3) (length chunk - 3)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 3) (length chunk - 3)
+     | otherwise -> Failure e
 
 -- | Consume four characters, failing if they do
 -- not match the expected values.
@@ -193,8 +193,8 @@ char4 e !c0 !c1 !c2 !c3 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk + 1) == c1
      , indexLatinCharArray (array chunk) (offset chunk + 2) == c2
      , indexLatinCharArray (array chunk) (offset chunk + 3) == c3
-         -> InternalSuccess () (offset chunk + 4) (length chunk - 4)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 4) (length chunk - 4)
+     | otherwise -> Failure e
 
 -- | Consume five characters, failing if they do
 -- not match the expected values.
@@ -207,8 +207,8 @@ char5 e !c0 !c1 !c2 !c3 !c4 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk + 2) == c2
      , indexLatinCharArray (array chunk) (offset chunk + 3) == c3
      , indexLatinCharArray (array chunk) (offset chunk + 4) == c4
-         -> InternalSuccess () (offset chunk + 5) (length chunk - 5)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 5) (length chunk - 5)
+     | otherwise -> Failure e
 
 -- | Consume six characters, failing if they do
 -- not match the expected values.
@@ -222,8 +222,8 @@ char6 e !c0 !c1 !c2 !c3 !c4 !c5 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk + 3) == c3
      , indexLatinCharArray (array chunk) (offset chunk + 4) == c4
      , indexLatinCharArray (array chunk) (offset chunk + 5) == c5
-         -> InternalSuccess () (offset chunk + 6) (length chunk - 6)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 6) (length chunk - 6)
+     | otherwise -> Failure e
 
 -- | Consume seven characters, failing if they do
 -- not match the expected values.
@@ -238,8 +238,8 @@ char7 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk + 4) == c4
      , indexLatinCharArray (array chunk) (offset chunk + 5) == c5
      , indexLatinCharArray (array chunk) (offset chunk + 6) == c6
-         -> InternalSuccess () (offset chunk + 7) (length chunk - 7)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 7) (length chunk - 7)
+     | otherwise -> Failure e
 
 -- | Consume eight characters, failing if they do
 -- not match the expected values.
@@ -255,8 +255,8 @@ char8 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk + 5) == c5
      , indexLatinCharArray (array chunk) (offset chunk + 6) == c6
      , indexLatinCharArray (array chunk) (offset chunk + 7) == c7
-         -> InternalSuccess () (offset chunk + 8) (length chunk - 8)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 8) (length chunk - 8)
+     | otherwise -> Failure e
 
 -- | Consume nine characters, failing if they do
 -- not match the expected values.
@@ -274,8 +274,8 @@ char9 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk + 6) == c6
      , indexLatinCharArray (array chunk) (offset chunk + 7) == c7
      , indexLatinCharArray (array chunk) (offset chunk + 8) == c8
-         -> InternalSuccess () (offset chunk + 9) (length chunk - 9)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 9) (length chunk - 9)
+     | otherwise -> Failure e
 
 -- | Consume ten characters, failing if they do
 -- not match the expected values.
@@ -294,8 +294,8 @@ char10 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk + 7) == c7
      , indexLatinCharArray (array chunk) (offset chunk + 8) == c8
      , indexLatinCharArray (array chunk) (offset chunk + 9) == c9
-         -> InternalSuccess () (offset chunk + 10) (length chunk - 10)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 10) (length chunk - 10)
+     | otherwise -> Failure e
 
 -- | Consume eleven characters, failing if they do
 -- not match the expected values.
@@ -315,8 +315,8 @@ char11 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 !c10 = uneffectful $ \chunk ->
      , indexLatinCharArray (array chunk) (offset chunk + 8) == c8
      , indexLatinCharArray (array chunk) (offset chunk + 9) == c9
      , indexLatinCharArray (array chunk) (offset chunk + 10) == c10
-         -> InternalSuccess () (offset chunk + 11) (length chunk - 11)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 11) (length chunk - 11)
+     | otherwise -> Failure e
 
 -- | Consume twelve characters, failing if they do
 -- not match the expected values.
@@ -337,8 +337,8 @@ char12 e !c0 !c1 !c2 !c3 !c4 !c5 !c6 !c7 !c8 !c9 !c10 !c11 = uneffectful $ \chun
      , indexLatinCharArray (array chunk) (offset chunk + 9) == c9
      , indexLatinCharArray (array chunk) (offset chunk + 10) == c10
      , indexLatinCharArray (array chunk) (offset chunk + 11) == c11
-         -> InternalSuccess () (offset chunk + 12) (length chunk - 12)
-     | otherwise -> InternalFailure e
+         -> Success () (offset chunk + 12) (length chunk - 12)
+     | otherwise -> Failure e
 
 -- | Consumes and returns the next character in the input.
 any :: e -> Parser e s Char
@@ -346,8 +346,8 @@ any :: e -> Parser e s Char
 any e = uneffectful $ \chunk -> if length chunk > 0
   then
     let c = indexLatinCharArray (array chunk) (offset chunk)
-     in InternalSuccess c (offset chunk + 1) (length chunk - 1)
-  else InternalFailure e
+     in Success c (offset chunk + 1) (length chunk - 1)
+  else Failure e
 
 -- | Consume a character from the input or return @Nothing@ if
 -- end of the stream has been reached. Since ISO 8859-1 maps every
@@ -355,8 +355,8 @@ any e = uneffectful $ \chunk -> if length chunk > 0
 opt :: Parser e s (Maybe Char)
 {-# inline opt #-}
 opt = uneffectful $ \chunk -> case length chunk of
-  0 -> InternalSuccess Nothing (offset chunk) (length chunk)
-  _ -> InternalSuccess
+  0 -> Success Nothing (offset chunk) (length chunk)
+  _ -> Success
     (Just (indexLatinCharArray (array chunk) (offset chunk)))
     (offset chunk + 1) (length chunk - 1)
 
@@ -1097,25 +1097,25 @@ hexFixedWord8# e = uneffectfulWord# $ \chunk -> if length chunk >= 2
 -- @[a-f0-9]@.
 hexNibbleLower :: e -> Parser e s Word
 hexNibbleLower e = uneffectful $ \chunk -> case length chunk of
-  0 -> InternalFailure e
+  0 -> Failure e
   _ ->
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8 in
-    if | w >= 48 && w < 58 -> InternalSuccess (fromIntegral w - 48) (offset chunk + 1) (length chunk - 1)
-       | w >= 97 && w < 103 -> InternalSuccess (fromIntegral w - 87) (offset chunk + 1) (length chunk - 1)
-       | otherwise -> InternalFailure e
+    if | w >= 48 && w < 58 -> Success (fromIntegral w - 48) (offset chunk + 1) (length chunk - 1)
+       | w >= 97 && w < 103 -> Success (fromIntegral w - 87) (offset chunk + 1) (length chunk - 1)
+       | otherwise -> Failure e
 
 -- | Consume a single character that is the case-insensitive hexadecimal
 -- encoding of a 4-bit word. Fails if the character is not in the class
 -- @[a-fA-F0-9]@.
 hexNibble :: e -> Parser e s Word
 hexNibble e = uneffectful $ \chunk -> case length chunk of
-  0 -> InternalFailure e
+  0 -> Failure e
   _ ->
     let w = PM.indexByteArray (array chunk) (offset chunk) :: Word8 in
-    if | w >= 48 && w < 58 -> InternalSuccess (fromIntegral w - 48) (offset chunk + 1) (length chunk - 1)
-       | w >= 65 && w < 71 -> InternalSuccess (fromIntegral w - 55) (offset chunk + 1) (length chunk - 1)
-       | w >= 97 && w < 103 -> InternalSuccess (fromIntegral w - 87) (offset chunk + 1) (length chunk - 1)
-       | otherwise -> InternalFailure e
+    if | w >= 48 && w < 58 -> Success (fromIntegral w - 48) (offset chunk + 1) (length chunk - 1)
+       | w >= 65 && w < 71 -> Success (fromIntegral w - 55) (offset chunk + 1) (length chunk - 1)
+       | w >= 97 && w < 103 -> Success (fromIntegral w - 87) (offset chunk + 1) (length chunk - 1)
+       | otherwise -> Failure e
 
 -- | Consume a single character that is the lowercase hexadecimal
 -- encoding of a 4-bit word. Returns @Nothing@ without consuming
@@ -1209,7 +1209,7 @@ anyUnsafe :: Parser e s Char
 {-# inline anyUnsafe #-}
 anyUnsafe = uneffectful $ \chunk ->
   let w = indexCharArray (array chunk) (offset chunk) :: Char
-   in InternalSuccess w (offset chunk + 1) (length chunk - 1)
+   in Success w (offset chunk + 1) (length chunk - 1)
 
 -- Reads one byte and interprets it as Latin1-encoded character.
 indexCharArray :: PM.ByteArray -> Int -> Char
@@ -1229,12 +1229,12 @@ peek = uneffectful $ \(Bytes arr off len) ->
   let v = if len > 0
         then Just (indexCharArray arr off)
         else Nothing
-  in InternalSuccess v off len
+  in Success v off len
 
 -- | Match any byte, to perform lookahead. Does not consume any
 --   input, but will fail if end of input has been reached.
 peek' :: e -> Parser e s Char
 {-# inline peek' #-}
 peek' e = uneffectful $ \(Bytes arr off len) -> if len > 0
-  then InternalSuccess (indexCharArray arr off) off len
-  else InternalFailure e
+  then Success (indexCharArray arr off) off len
+  else Failure e
