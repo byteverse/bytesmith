@@ -1,8 +1,11 @@
 # Revision history for bytesmith
 
-## 0.3.8.0 -- 2021-??-??
+## 0.3.8.0 -- 2021-10-11
 
 * Add `peek` and `peek'` to `Data.Bytes.Parser.Latin`.
+* Add inline pragmas to most functions to prevent cost centers.
+* Add support for WordRep-to-LiftedRep in Rebindable module.
+* Allow building with newer Contiguous.
 
 ## 0.3.7.0 -- 2020-07-27
 
