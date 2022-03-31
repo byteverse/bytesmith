@@ -133,7 +133,7 @@ instance Applicative (Parser e s) where
 instance Monad (Parser e s) where
   {-# inline return #-}
   {-# inline (>>=) #-}
-  return = pureParser
+  return = pure
   (>>=) = bindParser
 
 instance Functor (Parser e s) where
