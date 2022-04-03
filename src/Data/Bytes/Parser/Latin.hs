@@ -619,19 +619,19 @@ decWordStart e !chunk0 s0 = if length chunk0 > 0
 upcastWord16Result :: Result# e Word# -> Result# e Word16
 {-# inline upcastWord16Result #-}
 upcastWord16Result (# e | #) = (# e | #)
-upcastWord16Result (# | (# a, b, c #) #) = (# | (# W16# a, b, c #) #)
+upcastWord16Result (# | (# a, b, c #) #) = (# | (# W16# (Exts.wordToWord16# a), b, c #) #)
 
 -- Precondition: the word is small enough
 upcastWord32Result :: Result# e Word# -> Result# e Word32
 {-# inline upcastWord32Result #-}
 upcastWord32Result (# e | #) = (# e | #)
-upcastWord32Result (# | (# a, b, c #) #) = (# | (# W32# a, b, c #) #)
+upcastWord32Result (# | (# a, b, c #) #) = (# | (# W32# (Exts.wordToWord32# a), b, c #) #)
 
 -- Precondition: the word is small enough
 upcastWord8Result :: Result# e Word# -> Result# e Word8
 {-# inline upcastWord8Result #-}
 upcastWord8Result (# e | #) = (# e | #)
-upcastWord8Result (# | (# a, b, c #) #) = (# | (# W8# a, b, c #) #)
+upcastWord8Result (# | (# a, b, c #) #) = (# | (# W8# (Exts.wordToWord8# a), b, c #) #)
 
 -- | Parse a decimal-encoded number. If the number is too large to be
 -- represented by a machine integer, this fails with the provided
@@ -971,7 +971,7 @@ hexFixedWord32 e = Parser
   (\x s0 -> case runParser (hexFixedWord32# e) x s0 of
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
-      (# | (# a, b, c #) #) -> (# s1, (# | (# W32# a, b, c #) #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W32# (Exts.wordToWord32# a), b, c #) #) #)
   )
 
 hexFixedWord32# :: e -> Parser e s Word#
@@ -1042,7 +1042,7 @@ hexFixedWord16 e = Parser
   (\x s0 -> case runParser (hexFixedWord16# e) x s0 of
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
-      (# | (# a, b, c #) #) -> (# s1, (# | (# W16# a, b, c #) #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W16# (Exts.wordToWord16# a), b, c #) #) #)
   )
 
 hexFixedWord16# :: e -> Parser e s Word#
@@ -1074,7 +1074,7 @@ hexFixedWord8 e = Parser
   (\x s0 -> case runParser (hexFixedWord8# e) x s0 of
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
-      (# | (# a, b, c #) #) -> (# s1, (# | (# W8# a, b, c #) #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W8# (Exts.wordToWord8# a), b, c #) #) #)
   )
 
 hexFixedWord8# :: e -> Parser e s Word#
