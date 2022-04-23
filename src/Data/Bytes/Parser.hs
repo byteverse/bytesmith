@@ -15,6 +15,7 @@
 {-# language TypeApplications #-}
 {-# language UnboxedSums #-}
 {-# language UnboxedTuples #-}
+{-# language CPP #-}
 
 -- | Parse non-resumable sequence of bytes. To parse a byte sequence
 -- as text, use the @Ascii@, @Latin@, and @Utf8@ modules instead.
@@ -217,12 +218,20 @@ bytes e !expected = Parser
 -- | Consume input matching the @NUL@-terminated C String.
 cstring :: e -> CString -> Parser e s ()
 cstring e (Exts.Ptr ptr0) = Parser
-  ( \(# arr, off0, len0 #) s -> 
-    let go !ptr !off !len = case Exts.indexWord8OffAddr# ptr 0# of
+  ( \(# arr, off0, len0 #) s ->
+    let go !ptr !off !len = case
+#if MIN_VERSION_base(4,16,0)
+                 Exts.word8ToWord#
+#endif
+            (Exts.indexWord8OffAddr# ptr 0#) of
           0## -> (# s, (# | (# (), off, len #) #) #)
           c -> case len of
             0# -> (# s, (# e | #) #)
-            _ -> case Exts.eqWord# c (Exts.indexWord8Array# arr off) of
+            _ -> case Exts.eqWord# c (
+#if MIN_VERSION_base(4,16,0)
+                 Exts.word8ToWord#
+#endif
+              (Exts.indexWord8Array# arr off)) of
               1# -> go (Exts.plusAddr# ptr 1# ) (off +# 1# ) (len -# 1# )
               _ -> (# s, (# e | #) #)
      in go ptr0 off0 len0
@@ -483,7 +492,11 @@ unboxWord32 (Parser f) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r #) -> case r of
       (# e | #) -> (# s1, (# e | #) #)
-      (# | (# W32# a, b, c #) #) -> (# s1, (# | (# a, b, c #) #) #)
+      (# | (# W32# a, b, c #) #) -> (# s1, (# | (#
+#if MIN_VERSION_base(4,16,0)
+        Exts.word32ToWord#
+#endif
+        a, b, c #) #) #)
   )
 
 -- | Convert a @(Int,Int)@ parser to a @(# Int#, Int# #)@ parser.
@@ -504,7 +517,11 @@ boxWord32 (Parser f) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r #) -> case r of
       (# e | #) -> (# s1, (# e | #) #)
-      (# | (# a, b, c #) #) -> (# s1, (# | (# W32# a, b, c #) #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W32# (
+#if MIN_VERSION_base(4,16,0)
+        Exts.wordToWord32#
+#endif
+        a), b, c #) #) #)
   )
 
 -- | Convert a @(# Int#, Int# #)@ parser to a @(Int,Int)@ parser.
