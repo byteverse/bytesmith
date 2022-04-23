@@ -15,6 +15,7 @@
 {-# language TypeApplications #-}
 {-# language UnboxedSums #-}
 {-# language UnboxedTuples #-}
+{-# language CPP #-}
 
 -- | Parse input as UTF-8-encoded text. Parsers in this module will
 -- fail if they encounter a byte above @0x7F@.
@@ -46,8 +47,12 @@ any# e = Parser
   (\(# arr, off, len #) s0 -> case len ># 0# of
     1# ->
       let !w0 = Exts.indexWord8Array# arr off
-       in if | oneByteChar (W8# w0) -> 
-                 (# s0, (# | (# chr# (Exts.word2Int# w0), off +# 1#, len -# 1# #) #) #)
+       in if | oneByteChar (W8# w0) ->
+                 (# s0, (# | (# chr# (Exts.word2Int# (
+#if MIN_VERSION_base(4,16,0)
+                 Exts.word8ToWord#
+#endif
+                 w0)), off +# 1#, len -# 1# #) #) #)
              | twoByteChar (W8# w0) ->
                  if | I# len > 1
                     , w1 <- Exts.indexWord8Array# arr (off +# 1#)
@@ -81,9 +86,9 @@ codepointFromFourBytes :: Word8 -> Word8 -> Word8 -> Word8 -> Char
 codepointFromFourBytes w1 w2 w3 w4 = C#
   ( chr#
     ( unI $ fromIntegral
-      ( unsafeShiftL (word8ToWord w1 .&. 0b00001111) 18 .|. 
-        unsafeShiftL (word8ToWord w2 .&. 0b00111111) 12 .|. 
-        unsafeShiftL (word8ToWord w3 .&. 0b00111111) 6 .|. 
+      ( unsafeShiftL (word8ToWord w1 .&. 0b00001111) 18 .|.
+        unsafeShiftL (word8ToWord w2 .&. 0b00111111) 12 .|.
+        unsafeShiftL (word8ToWord w3 .&. 0b00111111) 6 .|.
         (word8ToWord w4 .&. 0b00111111)
       )
     )
@@ -93,8 +98,8 @@ codepointFromThreeBytes :: Word8 -> Word8 -> Word8 -> Char
 codepointFromThreeBytes w1 w2 w3 = C#
   ( chr#
     ( unI $ fromIntegral
-      ( unsafeShiftL (word8ToWord w1 .&. 0b00001111) 12 .|. 
-        unsafeShiftL (word8ToWord w2 .&. 0b00111111) 6 .|. 
+      ( unsafeShiftL (word8ToWord w1 .&. 0b00001111) 12 .|.
+        unsafeShiftL (word8ToWord w2 .&. 0b00111111) 6 .|.
         (word8ToWord w3 .&. 0b00111111)
       )
     )
@@ -104,7 +109,7 @@ codepointFromTwoBytes :: Word8 -> Word8 -> Char
 codepointFromTwoBytes w1 w2 = C#
   ( chr#
     ( unI $ fromIntegral @Word @Int
-      ( unsafeShiftL (word8ToWord w1 .&. 0b00011111) 6 .|. 
+      ( unsafeShiftL (word8ToWord w1 .&. 0b00011111) 6 .|.
         (word8ToWord w2 .&. 0b00111111)
       )
     )

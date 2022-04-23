@@ -15,6 +15,7 @@
 {-# language TypeApplications #-}
 {-# language UnboxedSums #-}
 {-# language UnboxedTuples #-}
+{-# language CPP #-}
 
 -- | Parse input as though it were text encoded by
 -- ISO 8859-1 (Latin-1). All byte sequences are valid
@@ -385,7 +386,7 @@ skipDigitsAscii1LoopStart ::
   -> Bytes -- chunk
   -> Result# e ()
 skipDigitsAscii1LoopStart e !c = if length c > 0
-  then 
+  then
     let w = indexLatinCharArray (array c) (offset c)
      in if w >= '0' && w <= '9'
           then upcastUnitSuccess (skipDigitsAsciiLoop (Bytes.unsafeDrop 1 c))
@@ -621,19 +622,31 @@ decWordStart e !chunk0 s0 = if length chunk0 > 0
 upcastWord16Result :: Result# e Word# -> Result# e Word16
 {-# inline upcastWord16Result #-}
 upcastWord16Result (# e | #) = (# e | #)
-upcastWord16Result (# | (# a, b, c #) #) = (# | (# W16# a, b, c #) #)
+upcastWord16Result (# | (# a, b, c #) #) = (# | (# W16# (
+#if MIN_VERSION_base(4,16,0)
+  Exts.wordToWord16#
+#endif
+  a), b, c #) #)
 
 -- Precondition: the word is small enough
 upcastWord32Result :: Result# e Word# -> Result# e Word32
 {-# inline upcastWord32Result #-}
 upcastWord32Result (# e | #) = (# e | #)
-upcastWord32Result (# | (# a, b, c #) #) = (# | (# W32# a, b, c #) #)
+upcastWord32Result (# | (# a, b, c #) #) = (# | (# W32# (
+#if MIN_VERSION_base(4,16,0)
+  Exts.wordToWord32#
+#endif
+  a), b, c #) #)
 
 -- Precondition: the word is small enough
 upcastWord8Result :: Result# e Word# -> Result# e Word8
 {-# inline upcastWord8Result #-}
 upcastWord8Result (# e | #) = (# e | #)
-upcastWord8Result (# | (# a, b, c #) #) = (# | (# W8# a, b, c #) #)
+upcastWord8Result (# | (# a, b, c #) #) = (# | (# W8# (
+#if MIN_VERSION_base(4,16,0)
+  Exts.wordToWord8#
+#endif
+  a), b, c #) #)
 
 -- | Parse a decimal-encoded number. If the number is too large to be
 -- represented by a machine integer, this fails with the provided
@@ -709,7 +722,7 @@ decSignedInt# e = any e `bindFromLiftedToInt` \c -> case c of
     (\chunk0 s0 -> decPosIntStart e (boxBytes chunk0) s0)
   '-' -> Parser -- minus sign
     (\chunk0 s0 -> decNegIntStart e (boxBytes chunk0) s0)
-  _ -> Parser -- no sign, there should be a digit here 
+  _ -> Parser -- no sign, there should be a digit here
     (\chunk0 s0 ->
       let !w = char2Word c - 48
         in if w < 10
@@ -724,7 +737,7 @@ decStandardInt# :: e -> Parser e s Int#
 decStandardInt# e = any e `bindFromLiftedToInt` \c -> case c of
   '-' -> Parser -- minus sign
     (\chunk0 s0 -> decNegIntStart e (boxBytes chunk0) s0)
-  _ -> Parser -- no sign, there should be a digit here 
+  _ -> Parser -- no sign, there should be a digit here
     (\chunk0 s0 ->
       let !w = char2Word c - 48
         in if w < 10
@@ -761,7 +774,7 @@ decSignedInteger e = any e >>= \c -> case c of
   '-' -> do
     x <- decUnsignedInteger e
     pure $! negate x
-  _ -> Parser -- no sign, there should be a digit here 
+  _ -> Parser -- no sign, there should be a digit here
     (\chunk0 s0 ->
       let !w = char2Word c - 48 in
       if w < 10
@@ -797,11 +810,11 @@ decNegIntStart e !chunk0 s0 = if length chunk0 > 0
     let !w = fromIntegral @Word8 @Word
           (PM.indexByteArray (array chunk0) (offset chunk0)) - 48
      in if w < 10
-          then 
+          then
             case decPosIntMore e w (maxIntAsWord + 1) (Bytes.unsafeDrop 1 chunk0) of
-             (# | (# x, y, z #) #) -> 
+             (# | (# x, y, z #) #) ->
                (# s0, (# | (# (notI# x +# 1# ), y, z #) #) #)
-             (# err | #) -> 
+             (# err | #) ->
                (# s0, (# err | #) #)
           else (# s0, (# e | #) #)
   else (# s0, (# e | #) #)
@@ -829,7 +842,7 @@ decUnsignedIntegerStart e !chunk0 s0 = if length chunk0 > 0
 -- exceeds the upper bound.
 decPosIntMore ::
      e -- Error message
-  -> Word -- Accumulator, precondition: less than or equal to bound 
+  -> Word -- Accumulator, precondition: less than or equal to bound
   -> Word -- Inclusive Upper Bound, either (2^63 - 1) or 2^63
   -> Bytes -- Chunk
   -> Result# e Int#
@@ -920,7 +933,7 @@ takeTrailedBy e !w = do
 -- | Skip all characters until the terminator is encountered
 -- and then consume the matching character as well. Visually,
 -- @skipTrailedBy \'C\'@ advances the cursor like this:
--- 
+--
 -- >  A Z B Y C X C W
 -- > |->->->->-|
 --
@@ -933,7 +946,7 @@ skipTrailedBy e !w = uneffectful# $ \c ->
 -- | Skip all characters until the terminator is encountered.
 -- This does not consume the terminator. Visually, @skipUntil \'C\'@
 -- advances the cursor like this:
--- 
+--
 -- >  A Z B Y C X C W
 -- > |->->->-|
 --
@@ -973,7 +986,11 @@ hexFixedWord32 e = Parser
   (\x s0 -> case runParser (hexFixedWord32# e) x s0 of
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
-      (# | (# a, b, c #) #) -> (# s1, (# | (# W32# a, b, c #) #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W32# (
+#if MIN_VERSION_base(4,16,0)
+        Exts.wordToWord32#
+#endif
+        a), b, c #) #) #)
   )
 
 hexFixedWord32# :: e -> Parser e s Word#
@@ -1022,7 +1039,7 @@ hexFixedWord64# e = uneffectfulWord# $ \chunk -> if length chunk >= 16
   then
     let go !off !len !acc = case len of
           0 -> case acc of
-            W# r -> 
+            W# r ->
               (# | (# r
               ,  unI off
               ,  unI (length chunk) -# 16# #) #)
@@ -1044,7 +1061,11 @@ hexFixedWord16 e = Parser
   (\x s0 -> case runParser (hexFixedWord16# e) x s0 of
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
-      (# | (# a, b, c #) #) -> (# s1, (# | (# W16# a, b, c #) #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W16# (
+#if MIN_VERSION_base(4,16,0)
+        Exts.wordToWord16#
+#endif
+        a), b, c #) #) #)
   )
 
 hexFixedWord16# :: e -> Parser e s Word#
@@ -1076,7 +1097,11 @@ hexFixedWord8 e = Parser
   (\x s0 -> case runParser (hexFixedWord8# e) x s0 of
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
-      (# | (# a, b, c #) #) -> (# s1, (# | (# W8# a, b, c #) #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W8# (
+#if MIN_VERSION_base(4,16,0)
+        Exts.wordToWord8#
+#endif
+        a), b, c #) #) #)
   )
 
 hexFixedWord8# :: e -> Parser e s Word#
@@ -1175,7 +1200,7 @@ uneffectfulWord# f = Parser
 -- word is less than or equal to the upper bound
 positivePushBase10 :: Word -> Word -> Word -> (Bool,Word)
 {-# inline positivePushBase10 #-}
-positivePushBase10 (W# a) (W# b) (W# upper) = 
+positivePushBase10 (W# a) (W# b) (W# upper) =
   let !(# ca, r0 #) = Exts.timesWord2# a 10##
       !r1 = Exts.plusWord# r0 b
       !cb = int2Word# (gtWord# r1 upper)
@@ -1185,7 +1210,7 @@ positivePushBase10 (W# a) (W# b) (W# upper) =
 
 unsignedPushBase10 :: Word -> Word -> (Bool,Word)
 {-# inline unsignedPushBase10 #-}
-unsignedPushBase10 (W# a) (W# b) = 
+unsignedPushBase10 (W# a) (W# b) =
   let !(# ca, r0 #) = Exts.timesWord2# a 10##
       !r1 = Exts.plusWord# r0 b
       !cb = int2Word# (ltWord# r1 r0)
