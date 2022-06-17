@@ -6,6 +6,7 @@
 * Add inline pragmas to most functions to prevent cost centers.
 * Add support for WordRep-to-LiftedRep in Rebindable module.
 * Allow building with newer Contiguous.
+* Export `uneffectful`.
 
 ## 0.3.7.0 -- 2020-07-27
 
