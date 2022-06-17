@@ -406,6 +406,7 @@ skipDigits = uneffectful# $ \c ->
   upcastUnitSuccess (skipDigitsAsciiLoop c)
 
 unI :: Int -> Int#
+{-# inline unI #-}
 unI (I# w) = w
 
 -- | Skip the character any number of times. This succeeds
@@ -600,6 +601,7 @@ decSmallWordMore e !acc !limit !chunk0 = if length chunk0 > 0
   else (# | (# unW acc, unI (offset chunk0), 0# #) #)
 
 unW :: Word -> Word#
+{-# inline unW #-}
 unW (W# w) = w
 
 decWordStart ::
