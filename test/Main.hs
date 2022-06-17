@@ -1,5 +1,6 @@
 {-# language BangPatterns #-}
 {-# language DataKinds #-}
+{-# language MagicHash #-}
 {-# language MultiWayIf #-}
 {-# language NumDecimals #-}
 {-# language OverloadedStrings #-}
@@ -111,6 +112,13 @@ tests = testGroup "Parser"
       P.parseBytes (replicateM (length xs) (BigEndian.word128 ())) bs
       ===
       P.parseBytes (fmap Exts.toList (BigEndian.word128Array () (length xs))) bs
+  , testProperty "cstring" $ \(xs :: [Word8]) ->
+      let ys = Exts.fromList xs
+          bs = Bytes.singleton 0x31 <> ys
+       in
+      P.parseBytes (P.cstring () (Exts.Ptr "1"# ) *> P.bytes () ys *> pure 42) bs
+      ===
+      (P.Success (Slice (Bytes.length ys + 1) 0 42) :: P.Result () Integer)
   , testCase "big-endian-word256" $
       P.parseBytesMaybe (BigEndian.word256Array () 1) (Exts.fromList [
         0x12, 0x34, 0x56, 0x78, 0x90,
