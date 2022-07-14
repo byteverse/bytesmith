@@ -1,5 +1,9 @@
 # Revision history for bytesmith
 
+## 0.3.9.0 -- 2022-07-14
+
+* Build with GHC 9.2.3.
+
 ## 0.3.8.0 -- 2021-10-11
 
 * Add `peek` and `peek'` to `Data.Bytes.Parser.Latin`.
