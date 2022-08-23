@@ -2,3 +2,15 @@ packages: .
 
 package bytesmith
   ghc-options: -Wall -Werror
+
+-- https://github.com/erikd/wide-word/pull/69
+source-repository-package
+    type: git
+    location: https://github.com/parsonsmatt/wide-word
+    tag: 8d8447cda8b6410c262408f605d0679623367071
+
+-- https://github.com/haskell-primitive/primitive-unaligned/pull/10
+source-repository-package
+    type: git
+    location: https://github.com/parsonsmatt/primitive-unaligned
+    tag: 25a9ec03577e979671496ba9c8af58fbe952f3fc
