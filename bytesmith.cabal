@@ -15,6 +15,7 @@ maintainer: andrew.thaddeus@gmail.com
 copyright: 2019 Andrew Martin
 category: Data
 extra-source-files: CHANGELOG.md
+tested-with: GHC == 8.6.5 || == 8.8.4 || == 8.10.7 || == 9.0.2 || == 9.2.5 || == 9.4.3
 
 library
   exposed-modules:
