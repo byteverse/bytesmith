@@ -565,7 +565,13 @@ upcastWordResult (# | (# a, b, c #) #) = (# | (# W# a, b, c #) #)
 upcastWord64Result :: Result# e Word# -> Result# e Word64
 {-# inline upcastWord64Result #-}
 upcastWord64Result (# e | #) = (# e | #)
-upcastWord64Result (# | (# a, b, c #) #) = (# | (# W64# a, b, c #) #)
+upcastWord64Result (# | (# a, b, c #) #) = (# | (# W64# (
+#if MIN_VERSION_base(4,17,0)
+    Exts.wordToWord64# a
+#else
+    a
+#endif
+    ), b, c #) #)
 
 hexSmallWordMore ::
      e -- Error message
@@ -1030,7 +1036,14 @@ hexFixedWord64 e = Parser
   (\x s0 -> case runParser (hexFixedWord64# e) x s0 of
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
-      (# | (# a, b, c #) #) -> (# s1, (# | (# W64# a, b, c #) #) #)
+      (# | (# a, b, c #) #) -> (# s1, (# | (# W64# (
+#if MIN_VERSION_base(4,17,0)
+          Exts.wordToWord64# a
+#else
+
+          a
+#endif
+          ), b, c #) #) #)
   )
 
 hexFixedWord64# :: e -> Parser e s Word#
