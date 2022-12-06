@@ -9,8 +9,8 @@ on:
       - synchronize
 jobs:
   build:
+    runs-on: ${{ matrix.os }}
     strategy:
-      runs-on: ${{ matrix.os }}
       matrix:
         cabal: ["latest"]
         ghc: [
