@@ -12,7 +12,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        cabal: ["latest"]
         ghc: [
           # "8.6.5", "8.8.4", # dependency issues
             "8.10.7", "9.0.2", "9.2.4", "9.4.2", "latest"
@@ -26,7 +25,7 @@ jobs:
         id: setup-haskell-cabal
         with:
           ghc-version: ${{ matrix.ghc }}
-          cabal-version: ${{ matrix.cabal }}
+          cabal-version: "latest"
       - run: cabal v2-update
       - run: cabal v2-freeze $CONFIG
       - uses: actions/cache@v2
