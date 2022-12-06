@@ -1,5 +1,9 @@
 # Revision history for bytesmith
 
+## 0.3.9.1 -- 2022-12-06
+
+* Build with GHC 9.4.
+
 ## 0.3.9.0 -- 2022-07-14
 
 * Build with GHC 9.2.3.
