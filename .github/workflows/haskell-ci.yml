@@ -28,7 +28,7 @@ jobs:
           cabal-version: "latest"
       - run: cabal v2-update
       - run: cabal v2-freeze $CONFIG
-      - uses: actions/cache@v2
+      - uses: actions/cache@v3
         with:
           path: |
             ${{ steps.setup-haskell-cabal.outputs.cabal-store }}
