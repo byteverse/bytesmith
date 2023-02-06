@@ -436,6 +436,12 @@ tests = testGroup "Parser"
         ===
         Just w
     ]
+  , testGroup "satisfy"
+    [ testCase "A" $
+        P.Success (Slice 2 0 0x20)
+        @=?
+        P.parseBytes (P.satisfy () (== 0x20)) (bytes "\x20")
+    ]
   ]
 
 bytes :: String -> Bytes
