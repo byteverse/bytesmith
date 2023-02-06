@@ -457,8 +457,8 @@ satisfy e p = satisfyWith e id p
 --   The parser returns the transformed byte that was parsed.
 satisfyWith :: e -> (Word8 -> a) -> (a -> Bool) -> Parser e s a
 {-# inline satisfyWith #-}
-satisfyWith e f p = uneffectful $ \chunk -> if length chunk > 1
-  then case B.unsafeIndex chunk 1 of
+satisfyWith e f p = uneffectful $ \chunk -> if length chunk > 0
+  then case B.unsafeIndex chunk 0 of
     w ->
       let v = f w
       in if p v
