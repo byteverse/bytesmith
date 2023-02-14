@@ -3,6 +3,7 @@
 ## 0.3.10.0 -- 2023-??-??
 
 * Add `mapErrorEffectfully`.
+* Correct the implementation of `satisfy`.
 
 ## 0.3.9.1 -- 2022-12-06
 
