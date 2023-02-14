@@ -1,5 +1,9 @@
 # Revision history for bytesmith
 
+## 0.3.10.0 -- 2023-??-??
+
+* Add `mapErrorEffectfully`.
+
 ## 0.3.9.1 -- 2022-12-06
 
 * Build with GHC 9.4.

@@ -66,6 +66,7 @@ module Data.Bytes.Parser
   , orElse
   , annotate
   , (<?>)
+  , mapErrorEffectfully
     -- * Repetition
   , replicate
     -- * Subparsing
@@ -569,6 +570,18 @@ orElse (Parser f) (Parser g) = Parser
   (\x s0 -> case f x s0 of
     (# s1, r0 #) -> case r0 of
       (# _ | #) -> g x s1
+      (# | r #) -> (# s1, (# | r #) #)
+  )
+
+-- | Effectfully adjusts the error message if an error occurs.
+mapErrorEffectfully :: (e1 -> ST s e2) -> Parser e1 s a -> Parser e2 s a
+{-# inline mapErrorEffectfully #-}
+mapErrorEffectfully f (Parser g) = Parser
+  (\x s0 -> case g x s0 of
+    (# s1, r0 #) -> case r0 of
+      (# e | #) -> case f e of
+        ST h -> case h s1 of
+          (# s2, e' #) -> (# s2, (# e' | #) #)
       (# | r #) -> (# s1, (# | r #) #)
   )
 
