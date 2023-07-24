@@ -1,12 +1,13 @@
+{-# language CPP #-}
+{-# language DataKinds #-}
 {-# language FlexibleInstances #-}
 {-# language MagicHash #-}
 {-# language MultiParamTypeClasses #-}
+{-# language PolyKinds #-}
 {-# language RankNTypes #-}
 {-# language ScopedTypeVariables #-}
-{-# language TypeInType #-}
 {-# language UnboxedSums #-}
 {-# language UnboxedTuples #-}
-{-# language CPP #-}
 
 -- | Provides levity-polymorphic variants of @>>=@, @>>@, and @pure@
 -- used to assemble parsers whose result types are unlifted. This
