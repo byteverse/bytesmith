@@ -37,6 +37,7 @@ module Data.Bytes.Parser
   , any
     -- * Many Bytes
   , take
+  , takeUpTo
   , takeWhile
   , takeTrailedBy
     -- * Skip
@@ -421,6 +422,16 @@ take e n = uneffectful $ \chunk -> if n <= B.length chunk
   then case B.unsafeTake n chunk of
     bs -> Internal.Success bs (offset chunk + n) (length chunk - n)
   else Internal.Failure e
+
+-- | Take at most the given number of bytes. This is greedy. It will
+--   consume as many bytes as there are available until it has consumed
+--   @n@ bytes. This never fails.
+takeUpTo :: Int -> Parser e s Bytes
+{-# inline takeUpTo #-}
+takeUpTo n = uneffectful $ \chunk ->
+  let m = min n (B.length chunk)
+   in case B.unsafeTake m chunk of
+        bs -> Internal.Success bs (offset chunk + m) (length chunk - m)
 
 -- | Consume all remaining bytes in the input.
 remaining :: Parser e s Bytes
