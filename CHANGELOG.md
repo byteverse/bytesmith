@@ -1,9 +1,10 @@
 # Revision history for bytesmith
 
-## 0.3.10.0 -- 2023-??-??
+## 0.3.10.0 -- 2023-07-25
 
 * Add `mapErrorEffectfully`.
 * Correct the implementation of `satisfy`.
+* Add `takeUpTo`.
 
 ## 0.3.9.1 -- 2022-12-06
 
