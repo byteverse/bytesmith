@@ -86,6 +86,8 @@ module Data.Bytes.Parser.Latin
   , hexFixedWord16
   , hexFixedWord32
   , hexFixedWord64
+  , hexFixedWord128
+  , hexFixedWord256
     -- *** Digit
   , hexNibbleLower
   , tryHexNibbleLower
@@ -98,14 +100,15 @@ import Prelude hiding (length,any,fail,takeWhile)
 import Data.Bits ((.|.))
 import Data.Bytes.Types (Bytes(..))
 import Data.Bytes.Parser.Internal (InternalStep(..),unfailing)
+import Data.Bytes.Parser (bindFromLiftedToInt,isEndOfInput,endOfInput)
 import Data.Bytes.Parser.Internal (Parser(..),ST#,uneffectful,Result#,uneffectful#)
 import Data.Bytes.Parser.Internal (Result(..),indexLatinCharArray,upcastUnitSuccess)
 import Data.Bytes.Parser.Internal (boxBytes)
-import Data.Bytes.Parser (bindFromLiftedToInt,isEndOfInput,endOfInput)
 import Data.Bytes.Parser.Unsafe (expose,cursor,unconsume)
-import Data.Word (Word8)
 import Data.Char (ord)
 import Data.Kind (Type)
+import Data.WideWord (Word256(Word256),Word128(Word128))
+import Data.Word (Word8)
 import GHC.Exts (Int(I#),Char(C#),Word#,Int#,Char#,(+#),(-#),indexCharArray#)
 import GHC.Exts (TYPE,RuntimeRep,int2Word#,or#)
 import GHC.Exts (ltWord#,gtWord#,notI#)
@@ -1052,6 +1055,18 @@ hexFixedWord64 e = Parser
 #endif
           ), b, c #) #) #)
   )
+
+hexFixedWord128 :: e -> Parser e s Word128
+hexFixedWord128 e = Word128
+  <$> hexFixedWord64 e
+  <*> hexFixedWord64 e
+
+hexFixedWord256 :: e -> Parser e s Word256
+hexFixedWord256 e = Word256
+  <$> hexFixedWord64 e
+  <*> hexFixedWord64 e
+  <*> hexFixedWord64 e
+  <*> hexFixedWord64 e
 
 hexFixedWord64# :: e -> Parser e s Word#
 {-# noinline hexFixedWord64# #-}
