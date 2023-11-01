@@ -80,6 +80,7 @@ module Data.Bytes.Parser.Latin
     -- *** Variable Length
   , hexWord8
   , hexWord16
+  , hexWord32
     -- *** Fixed Length
   , hexFixedWord8
   , hexFixedWord16
@@ -471,6 +472,12 @@ hexWord16 :: e -> Parser e s Word16
 hexWord16 e = Parser
   (\chunk0 s0 -> case hexSmallWordStart e 65536 (boxBytes chunk0) s0 of
     (# s1, r #) -> (# s1, upcastWord16Result r #)
+  )
+
+hexWord32 :: e -> Parser e s Word32
+hexWord32 e = Parser
+  (\chunk0 s0 -> case hexSmallWordStart e 4294967296 (boxBytes chunk0) s0 of
+    (# s1, r #) -> (# s1, upcastWord32Result r #)
   )
 
 -- | Parse a decimal-encoded 16-bit word. If the number is larger

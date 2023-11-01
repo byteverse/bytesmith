@@ -1,5 +1,9 @@
 # Revision history for bytesmith
 
+## 0.3.11.0 -- 2023-??-??
+
+* Add `Data.Bytes.Parser.Latin.hexWord32`.
+
 ## 0.3.10.0 -- 2023-07-25
 
 * Add `mapErrorEffectfully`.
