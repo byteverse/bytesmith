@@ -1,6 +1,6 @@
 # Revision history for bytesmith
 
-## 0.3.11.0 -- 2023-??-??
+## 0.3.11.0 -- 2024-01-05
 
 * Add `Data.Bytes.Parser.Latin.hexWord32`.
 * Add `Data.Bytes.Parser.Latin.hexFixedWord(128|256)`.
