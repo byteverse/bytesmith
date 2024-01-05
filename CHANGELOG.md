@@ -4,6 +4,7 @@
 
 * Add `Data.Bytes.Parser.Latin.hexWord32`.
 * Add `Data.Bytes.Parser.Latin.hexFixedWord(128|256)`.
+* Add `Data.Bytes.Parser.takeN`.
 
 ## 0.3.10.0 -- 2023-07-25
 

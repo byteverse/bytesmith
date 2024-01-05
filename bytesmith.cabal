@@ -34,12 +34,13 @@ library
     Data.Bytes.Parser.Types
   build-depends:
     , base >=4.12 && <5
-    , bytestring >=0.10.8 && <=0.12
     , byteslice >=0.2.6 && <0.3
+    , bytestring >=0.10.8 && <=0.12
     , contiguous >= 0.6 && < 0.7
+    , natural-arithmetic >=0.1.3
     , primitive >=0.7 && <0.10
-    , text-short >=0.1.3 && <0.2
     , run-st >=0.1 && <0.2
+    , text-short >=0.1.3 && <0.2
     , wide-word >=0.1.0.9 && <0.2
   hs-source-dirs: src
   ghc-options: -O2 -Wall

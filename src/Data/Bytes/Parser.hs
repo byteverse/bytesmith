@@ -37,6 +37,7 @@ module Data.Bytes.Parser
   , any
     -- * Many Bytes
   , take
+  , takeN
   , takeUpTo
   , takeWhile
   , takeTrailedBy
@@ -108,14 +109,16 @@ import Data.Bytes.Parser.Internal (boxBytes,Result#,uneffectful,fail)
 import Data.Bytes.Parser.Internal (uneffectful#,uneffectfulInt#)
 import Data.Bytes.Parser.Types (Result(Failure,Success),Slice(Slice))
 import Data.Bytes.Parser.Unsafe (unconsume,expose,cursor)
-import Data.Bytes.Types (Bytes(..))
+import Data.Bytes.Types (Bytes(..),BytesN(BytesN))
 import Data.Primitive (ByteArray(..))
+import Data.Primitive.Contiguous (Contiguous,Element)
 import Foreign.C.String (CString)
 import GHC.Exts (Int(I#),Word#,Int#,Char#,runRW#,(+#),(-#),(>=#))
 import GHC.ST (ST(..))
 import GHC.Word (Word32(W32#),Word8)
-import Data.Primitive.Contiguous (Contiguous,Element)
 
+import qualified Arithmetic.Nat as Nat
+import qualified Arithmetic.Types as Arithmetic
 import qualified Data.Bytes as B
 import qualified Data.Bytes.Parser.Internal as Internal
 import qualified Data.Primitive as PM
@@ -422,6 +425,17 @@ take e n = uneffectful $ \chunk -> if n <= B.length chunk
   then case B.unsafeTake n chunk of
     bs -> Internal.Success bs (offset chunk + n) (length chunk - n)
   else Internal.Failure e
+
+-- | Variant of 'take' that tracks the length of the result in the result type.
+takeN :: e -> Arithmetic.Nat n -> Parser e s (BytesN n)
+takeN e n0 = uneffectful $ \chunk -> if n <= B.length chunk
+  then case B.unsafeTake n chunk of
+    Bytes theChunk theOff _ -> Internal.Success (BytesN theChunk theOff) (offset chunk + n) (length chunk - n)
+  else Internal.Failure e
+  where
+  !n = Nat.demote n0
+
+
 
 -- | Take at most the given number of bytes. This is greedy. It will
 --   consume as many bytes as there are available until it has consumed
