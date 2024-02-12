@@ -54,7 +54,7 @@ module Data.Bytes.Parser.Ascii
 
 import Prelude hiding (any, fail, length, takeWhile)
 
-import Control.Monad.ST.Run (runByteArrayST)
+import Control.Monad.ST (runST)
 import Data.Bits (clearBit)
 import Data.Bytes.Parser.Internal (Parser (..), Result (..), Result#, indexLatinCharArray, uneffectful, uneffectful#, upcastUnitSuccess)
 import Data.Bytes.Types (Bytes (..))
@@ -115,7 +115,7 @@ takeShortWhile p = do
   end <- Unsafe.cursor
   src <- Unsafe.expose
   let len = end - start
-      !r = runByteArrayST $ do
+      !r = runST $ do
         marr <- PM.newByteArray len
         PM.copyByteArray marr 0 src start len
         PM.unsafeFreezeByteArray marr
@@ -136,7 +136,7 @@ shortTrailedBy e !c = do
   end <- Unsafe.cursor
   src <- Unsafe.expose
   let len = end - start - 1
-      !r = runByteArrayST $ do
+      !r = runST $ do
         marr <- PM.newByteArray len
         PM.copyByteArray marr 0 src start len
         PM.unsafeFreezeByteArray marr
