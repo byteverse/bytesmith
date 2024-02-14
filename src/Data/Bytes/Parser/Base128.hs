@@ -1,5 +1,5 @@
-{-# language BangPatterns #-}
-{-# language TypeApplications #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Data.Bytes.Parser.Base128
   ( -- * Unsigned
@@ -9,9 +9,9 @@ module Data.Bytes.Parser.Base128
   ) where
 
 import Control.Monad (when)
-import Data.Bits (testBit,unsafeShiftL,(.|.),bit,clearBit)
+import Data.Bits (bit, clearBit, testBit, unsafeShiftL, (.|.))
 import Data.Bytes.Parser (Parser)
-import Data.Word (Word8,Word16,Word32,Word64)
+import Data.Word (Word16, Word32, Word64, Word8)
 
 import qualified Data.Bytes.Parser as P
 

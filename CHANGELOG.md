@@ -1,5 +1,9 @@
 # Revision history for bytesmith
 
+## 0.3.11.1 -- 2024-02-13
+
+* Update package metadata.
+
 ## 0.3.11.0 -- 2024-01-05
 
 * Add `Data.Bytes.Parser.Latin.hexWord32`.

@@ -1,31 +1,30 @@
-{-# language CPP #-}
-{-# language DataKinds #-}
-{-# language FlexibleInstances #-}
-{-# language MagicHash #-}
-{-# language MultiParamTypeClasses #-}
-{-# language PolyKinds #-}
-{-# language RankNTypes #-}
-{-# language ScopedTypeVariables #-}
-{-# language UnboxedSums #-}
-{-# language UnboxedTuples #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE UnboxedTuples #-}
 
--- | Provides levity-polymorphic variants of @>>=@, @>>@, and @pure@
--- used to assemble parsers whose result types are unlifted. This
--- cannot be used with the @RebindableSyntax@ extension because that
--- extension disallows representations other than @LiftedRep@. Consequently,
--- users of this module must manually desugar do notation. See the
--- @url-bytes@ library for an example of this module in action.
---
--- Only resort to the functions in this module after checking that
--- GHC is unable to optimize away @I#@ and friends in your code.
+{- | Provides levity-polymorphic variants of @>>=@, @>>@, and @pure@
+used to assemble parsers whose result types are unlifted. This
+cannot be used with the @RebindableSyntax@ extension because that
+extension disallows representations other than @LiftedRep@. Consequently,
+users of this module must manually desugar do notation. See the
+@url-bytes@ library for an example of this module in action.
+
+Only resort to the functions in this module after checking that
+GHC is unable to optimize away @I#@ and friends in your code.
+-}
 module Data.Bytes.Parser.Rebindable
-  ( Bind(..)
-  , Pure(..)
+  ( Bind (..)
+  , Pure (..)
   ) where
 
+import Data.Bytes.Parser.Internal (Parser (..))
+import GHC.Exts (RuntimeRep (..), TYPE)
 import Prelude ()
-import GHC.Exts (TYPE,RuntimeRep(..))
-import Data.Bytes.Parser.Internal (Parser(..))
 
 #if MIN_VERSION_base(4,16,0)
 import GHC.Exts (LiftedRep)
@@ -34,411 +33,506 @@ type LiftedRep = 'LiftedRep
 #endif
 
 class Bind (ra :: RuntimeRep) (rb :: RuntimeRep) where
-  (>>=) :: forall e s (a :: TYPE ra) (b :: TYPE rb).
-    Parser e s a -> (a -> Parser e s b) -> Parser e s b
-  (>>) :: forall e s (a :: TYPE ra) (b :: TYPE rb).
-    Parser e s a -> Parser e s b -> Parser e s b
+  (>>=) ::
+    forall e s (a :: TYPE ra) (b :: TYPE rb).
+    Parser e s a ->
+    (a -> Parser e s b) ->
+    Parser e s b
+  (>>) ::
+    forall e s (a :: TYPE ra) (b :: TYPE rb).
+    Parser e s a ->
+    Parser e s b ->
+    Parser e s b
 
 class Pure (ra :: RuntimeRep) where
   pure :: forall e s (a :: TYPE ra). a -> Parser e s a
 
 pureParser :: a -> Parser e s a
-{-# inline pureParser #-}
-pureParser a = Parser
-  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+{-# INLINE pureParser #-}
+pureParser a =
+  Parser
+    (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
 
 bindParser :: Parser e s a -> (a -> Parser e s b) -> Parser e s b
-{-# inline bindParser #-}
-bindParser (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+{-# INLINE bindParser #-}
+bindParser (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
 sequenceParser :: Parser e s a -> Parser e s b -> Parser e s b
-{-# inline sequenceParser #-}
-sequenceParser (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
+{-# INLINE sequenceParser #-}
+sequenceParser (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )
 
-pureIntParser :: forall (a :: TYPE 'IntRep) e s.
-  a -> Parser e s a
-{-# inline pureIntParser #-}
-pureIntParser a = Parser
-  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+pureIntParser ::
+  forall (a :: TYPE 'IntRep) e s.
+  a ->
+  Parser e s a
+{-# INLINE pureIntParser #-}
+pureIntParser a =
+  Parser
+    (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
 
-bindIntParser :: forall (a :: TYPE 'IntRep) e s b.
-  Parser e s a -> (a -> Parser e s b) -> Parser e s b
-{-# inline bindIntParser #-}
-bindIntParser (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+bindIntParser ::
+  forall (a :: TYPE 'IntRep) e s b.
+  Parser e s a ->
+  (a -> Parser e s b) ->
+  Parser e s b
+{-# INLINE bindIntParser #-}
+bindIntParser (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
-bindWordParser :: forall (a :: TYPE 'WordRep) e s b.
-  Parser e s a -> (a -> Parser e s b) -> Parser e s b
-{-# inline bindWordParser #-}
-bindWordParser (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+bindWordParser ::
+  forall (a :: TYPE 'WordRep) e s b.
+  Parser e s a ->
+  (a -> Parser e s b) ->
+  Parser e s b
+{-# INLINE bindWordParser #-}
+bindWordParser (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
-sequenceIntParser :: forall (a :: TYPE 'IntRep) e s b.
-  Parser e s a -> Parser e s b -> Parser e s b
-{-# inline sequenceIntParser #-}
-sequenceIntParser (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
+sequenceIntParser ::
+  forall (a :: TYPE 'IntRep) e s b.
+  Parser e s a ->
+  Parser e s b ->
+  Parser e s b
+{-# INLINE sequenceIntParser #-}
+sequenceIntParser (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )
 
-sequenceWordParser :: forall (a :: TYPE 'WordRep) e s b.
-  Parser e s a -> Parser e s b -> Parser e s b
-{-# inline sequenceWordParser #-}
-sequenceWordParser (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
+sequenceWordParser ::
+  forall (a :: TYPE 'WordRep) e s b.
+  Parser e s a ->
+  Parser e s b ->
+  Parser e s b
+{-# INLINE sequenceWordParser #-}
+sequenceWordParser (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )
 
-pureIntPairParser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) e s.
-  a -> Parser e s a
-{-# inline pureIntPairParser #-}
-pureIntPairParser a = Parser
-  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+pureIntPairParser ::
+  forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) e s.
+  a ->
+  Parser e s a
+{-# INLINE pureIntPairParser #-}
+pureIntPairParser a =
+  Parser
+    (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
 
-bindIntPairParser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) e s b.
-  Parser e s a -> (a -> Parser e s b) -> Parser e s b
-{-# inline bindIntPairParser #-}
-bindIntPairParser (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+bindIntPairParser ::
+  forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) e s b.
+  Parser e s a ->
+  (a -> Parser e s b) ->
+  Parser e s b
+{-# INLINE bindIntPairParser #-}
+bindIntPairParser (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
-pureInt5Parser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])) e s.
-  a -> Parser e s a
-{-# inline pureInt5Parser #-}
-pureInt5Parser a = Parser
-  (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+pureInt5Parser ::
+  forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])) e s.
+  a ->
+  Parser e s a
+{-# INLINE pureInt5Parser #-}
+pureInt5Parser a =
+  Parser
+    (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
 
-bindInt5Parser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])) e s b.
-  Parser e s a -> (a -> Parser e s b) -> Parser e s b
-{-# inline bindInt5Parser #-}
-bindInt5Parser (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+bindInt5Parser ::
+  forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])) e s b.
+  Parser e s a ->
+  (a -> Parser e s b) ->
+  Parser e s b
+{-# INLINE bindInt5Parser #-}
+bindInt5Parser (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
-sequenceInt5Parser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])) e s b.
-  Parser e s a -> Parser e s b -> Parser e s b
-{-# inline sequenceInt5Parser #-}
-sequenceInt5Parser (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
+sequenceInt5Parser ::
+  forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])) e s b.
+  Parser e s a ->
+  Parser e s b ->
+  Parser e s b
+{-# INLINE sequenceInt5Parser #-}
+sequenceInt5Parser (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )
 
-sequenceIntPairParser :: forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) e s b.
-  Parser e s a -> Parser e s b -> Parser e s b
-{-# inline sequenceIntPairParser #-}
-sequenceIntPairParser (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
+sequenceIntPairParser ::
+  forall (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])) e s b.
+  Parser e s a ->
+  Parser e s b ->
+  Parser e s b
+{-# INLINE sequenceIntPairParser #-}
+sequenceIntPairParser (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )
 
-bindInt2to5Parser :: forall
-  (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep]))
-  (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]))
-  e s.
-  Parser e s a -> (a -> Parser e s b) -> Parser e s b
-{-# inline bindInt2to5Parser #-}
-bindInt2to5Parser (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+bindInt2to5Parser ::
+  forall
+    (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep]))
+    (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]))
+    e
+    s.
+  Parser e s a ->
+  (a -> Parser e s b) ->
+  Parser e s b
+{-# INLINE bindInt2to5Parser #-}
+bindInt2to5Parser (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
-sequenceInt2to5Parser :: forall
-  (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep]))
-  (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]))
-  e s.
-  Parser e s a -> Parser e s b -> Parser e s b
-{-# inline sequenceInt2to5Parser #-}
-sequenceInt2to5Parser (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
+sequenceInt2to5Parser ::
+  forall
+    (a :: TYPE ('TupleRep '[ 'IntRep, 'IntRep]))
+    (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]))
+    e
+    s.
+  Parser e s a ->
+  Parser e s b ->
+  Parser e s b
+{-# INLINE sequenceInt2to5Parser #-}
+sequenceInt2to5Parser (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )
 
 instance Bind LiftedRep LiftedRep where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindParser
   (>>) = sequenceParser
 
 instance Bind 'WordRep LiftedRep where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindWordParser
   (>>) = sequenceWordParser
 
 instance Bind 'IntRep LiftedRep where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindIntParser
   (>>) = sequenceIntParser
 
 instance Bind ('TupleRep '[ 'IntRep, 'IntRep]) LiftedRep where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindIntPairParser
   (>>) = sequenceIntPairParser
 
-
-instance Bind ('TupleRep '[ 'IntRep, 'IntRep])
-              ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])
+instance
+  Bind
+    ('TupleRep '[ 'IntRep, 'IntRep])
+    ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])
   where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindInt2to5Parser
   (>>) = sequenceInt2to5Parser
 
-instance Bind ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])
-              LiftedRep
+instance
+  Bind
+    ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])
+    LiftedRep
   where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindInt5Parser
   (>>) = sequenceInt5Parser
 
-
-instance Bind 'IntRep
-              ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])
+instance
+  Bind
+    'IntRep
+    ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])
   where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindFromIntToInt5
   (>>) = sequenceIntToInt5
 
 instance Bind LiftedRep ('TupleRep '[ 'IntRep, 'IntRep]) where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindFromLiftedToIntPair
   (>>) = sequenceLiftedToIntPair
 
-instance Bind LiftedRep
-              ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])
+instance
+  Bind
+    LiftedRep
+    ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])
   where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindFromLiftedToInt5
   (>>) = sequenceLiftedToInt5
 
 instance Bind 'IntRep ('TupleRep '[ 'IntRep, 'IntRep]) where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindFromIntToIntPair
   (>>) = sequenceIntToIntPair
 
 instance Bind LiftedRep 'IntRep where
-  {-# inline (>>=) #-}
-  {-# inline (>>) #-}
+  {-# INLINE (>>=) #-}
+  {-# INLINE (>>) #-}
   (>>=) = bindFromLiftedToInt
   (>>) = sequenceLiftedToInt
 
 instance Pure LiftedRep where
-  {-# inline pure #-}
+  {-# INLINE pure #-}
   pure = pureParser
 
 instance Pure 'IntRep where
-  {-# inline pure #-}
+  {-# INLINE pure #-}
   pure = pureIntParser
 
 instance Pure ('TupleRep '[ 'IntRep, 'IntRep]) where
-  {-# inline pure #-}
+  {-# INLINE pure #-}
   pure = pureIntPairParser
 
 instance Pure ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep]) where
-  {-# inline pure #-}
+  {-# INLINE pure #-}
   pure = pureInt5Parser
 
 bindFromIntToIntPair ::
-     forall s e
-       (a :: TYPE 'IntRep)
-       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep ])).
-     Parser s e a
-  -> (a -> Parser s e b)
-  -> Parser s e b
-{-# inline bindFromIntToIntPair #-}
-bindFromIntToIntPair (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+  forall
+    s
+    e
+    (a :: TYPE 'IntRep)
+    (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])).
+  Parser s e a ->
+  (a -> Parser s e b) ->
+  Parser s e b
+{-# INLINE bindFromIntToIntPair #-}
+bindFromIntToIntPair (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
 sequenceIntToIntPair ::
-     forall s e
-       (a :: TYPE 'IntRep)
-       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep ])).
-     Parser s e a
-  -> Parser s e b
-  -> Parser s e b
-{-# inline sequenceIntToIntPair #-}
-sequenceIntToIntPair (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
+  forall
+    s
+    e
+    (a :: TYPE 'IntRep)
+    (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])).
+  Parser s e a ->
+  Parser s e b ->
+  Parser s e b
+{-# INLINE sequenceIntToIntPair #-}
+sequenceIntToIntPair (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )
 
 bindFromIntToInt5 ::
-     forall s e
-       (a :: TYPE 'IntRep)
-       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep ])).
-     Parser s e a
-  -> (a -> Parser s e b)
-  -> Parser s e b
-{-# inline bindFromIntToInt5 #-}
-bindFromIntToInt5 (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+  forall
+    s
+    e
+    (a :: TYPE 'IntRep)
+    (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])).
+  Parser s e a ->
+  (a -> Parser s e b) ->
+  Parser s e b
+{-# INLINE bindFromIntToInt5 #-}
+bindFromIntToInt5 (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
 sequenceIntToInt5 ::
-     forall s e
-       (a :: TYPE 'IntRep)
-       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep ])).
-     Parser s e a
-  -> Parser s e b
-  -> Parser s e b
-{-# inline sequenceIntToInt5 #-}
-sequenceIntToInt5 (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
+  forall
+    s
+    e
+    (a :: TYPE 'IntRep)
+    (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])).
+  Parser s e a ->
+  Parser s e b ->
+  Parser s e b
+{-# INLINE sequenceIntToInt5 #-}
+sequenceIntToInt5 (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )
 
 bindFromLiftedToIntPair ::
-     forall s e
-       (a :: TYPE LiftedRep)
-       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep ])).
-     Parser s e a
-  -> (a -> Parser s e b)
-  -> Parser s e b
-{-# inline bindFromLiftedToIntPair #-}
-bindFromLiftedToIntPair (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+  forall
+    s
+    e
+    (a :: TYPE LiftedRep)
+    (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])).
+  Parser s e a ->
+  (a -> Parser s e b) ->
+  Parser s e b
+{-# INLINE bindFromLiftedToIntPair #-}
+bindFromLiftedToIntPair (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
 sequenceLiftedToIntPair ::
-     forall s e
-       (a :: TYPE LiftedRep)
-       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep ])).
-     Parser s e a
-  -> Parser s e b
-  -> Parser s e b
-{-# inline sequenceLiftedToIntPair #-}
-sequenceLiftedToIntPair (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
-
+  forall
+    s
+    e
+    (a :: TYPE LiftedRep)
+    (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep])).
+  Parser s e a ->
+  Parser s e b ->
+  Parser s e b
+{-# INLINE sequenceLiftedToIntPair #-}
+sequenceLiftedToIntPair (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )
 
 bindFromLiftedToInt5 ::
-     forall s e
-       (a :: TYPE LiftedRep)
-       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])).
-     Parser s e a
-  -> (a -> Parser s e b)
-  -> Parser s e b
-{-# inline bindFromLiftedToInt5 #-}
-bindFromLiftedToInt5 (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+  forall
+    s
+    e
+    (a :: TYPE LiftedRep)
+    (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])).
+  Parser s e a ->
+  (a -> Parser s e b) ->
+  Parser s e b
+{-# INLINE bindFromLiftedToInt5 #-}
+bindFromLiftedToInt5 (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
 sequenceLiftedToInt5 ::
-     forall s e
-       (a :: TYPE LiftedRep)
-       (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep ])).
-     Parser s e a
-  -> Parser s e b
-  -> Parser s e b
-{-# inline sequenceLiftedToInt5 #-}
-sequenceLiftedToInt5 (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
+  forall
+    s
+    e
+    (a :: TYPE LiftedRep)
+    (b :: TYPE ('TupleRep '[ 'IntRep, 'IntRep, 'IntRep, 'IntRep, 'IntRep])).
+  Parser s e a ->
+  Parser s e b ->
+  Parser s e b
+{-# INLINE sequenceLiftedToInt5 #-}
+sequenceLiftedToInt5 (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )
 
 bindFromLiftedToInt ::
-     forall s e
-       (a :: TYPE LiftedRep)
-       (b :: TYPE 'IntRep).
-     Parser s e a
-  -> (a -> Parser s e b)
-  -> Parser s e b
-{-# inline bindFromLiftedToInt #-}
-bindFromLiftedToInt (Parser f) g = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# y, b, c #) #) ->
-        runParser (g y) (# arr, b, c #) s1
-  )
+  forall
+    s
+    e
+    (a :: TYPE LiftedRep)
+    (b :: TYPE 'IntRep).
+  Parser s e a ->
+  (a -> Parser s e b) ->
+  Parser s e b
+{-# INLINE bindFromLiftedToInt #-}
+bindFromLiftedToInt (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
 
 sequenceLiftedToInt ::
-     forall s e
-       (a :: TYPE LiftedRep)
-       (b :: TYPE 'IntRep).
-     Parser s e a
-  -> Parser s e b
-  -> Parser s e b
-{-# inline sequenceLiftedToInt #-}
-sequenceLiftedToInt (Parser f) (Parser g) = Parser
-  (\x@(# arr, _, _ #) s0 -> case f x s0 of
-    (# s1, r0 #) -> case r0 of
-      (# e | #) -> (# s1, (# e | #) #)
-      (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
-  )
+  forall
+    s
+    e
+    (a :: TYPE LiftedRep)
+    (b :: TYPE 'IntRep).
+  Parser s e a ->
+  Parser s e b ->
+  Parser s e b
+{-# INLINE sequenceLiftedToInt #-}
+sequenceLiftedToInt (Parser f) (Parser g) =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# _, b, c #) #) -> g (# arr, b, c #) s1
+    )

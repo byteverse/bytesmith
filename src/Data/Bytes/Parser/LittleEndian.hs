@@ -1,24 +1,19 @@
-{-# language BangPatterns #-}
-{-# language BinaryLiterals #-}
-{-# language DataKinds #-}
-{-# language DeriveFunctor #-}
-{-# language DerivingStrategies #-}
-{-# language GADTSyntax #-}
-{-# language KindSignatures #-}
-{-# language LambdaCase #-}
-{-# language MagicHash #-}
-{-# language MultiWayIf #-}
-{-# language PolyKinds #-}
-{-# language RankNTypes #-}
-{-# language ScopedTypeVariables #-}
-{-# language StandaloneDeriving #-}
-{-# language TypeApplications #-}
-{-# language UnboxedSums #-}
-{-# language UnboxedTuples #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BinaryLiterals #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GADTSyntax #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UnboxedSums #-}
 
 -- | Little-endian fixed-width numbers.
 module Data.Bytes.Parser.LittleEndian
   ( -- * One
+
     -- ** Unsigned
     word8
   , word16
@@ -26,36 +21,40 @@ module Data.Bytes.Parser.LittleEndian
   , word64
   , word128
   , word256
+
     -- ** Signed
   , int8
   , int16
   , int32
   , int64
+
     -- * Many
+
     -- ** Unsigned
   , word16Array
   , word32Array
   , word64Array
   , word128Array
   , word256Array
+
     -- ** Unsigned
   , int64Array
   ) where
 
-import Prelude hiding (length,any,fail,takeWhile)
+import Prelude hiding (any, fail, length, takeWhile)
 
+#if MIN_VERSION_base(4,18,0)
+#else
 import Control.Applicative (liftA2)
-import Data.Bits ((.|.),unsafeShiftL)
-import Data.Primitive (ByteArray(..),PrimArray(..))
-import Data.Bytes.Types (Bytes(..))
-import Data.Bytes.Parser.Internal (Parser,uneffectful)
-import Data.Bytes.Parser.Internal (Result(..))
-import Data.Bytes.Parser.Internal (swapArray16,swapArray32)
-import Data.Bytes.Parser.Internal (swapArray64,swapArray128,swapArray256)
-import Data.Word (Word8,Word16,Word32,Word64)
-import Data.Int (Int8,Int16,Int32,Int64)
-import Data.WideWord (Word128(Word128),Word256(Word256))
-import GHC.ByteOrder (ByteOrder(LittleEndian,BigEndian),targetByteOrder)
+#endif
+import Data.Bits (unsafeShiftL, (.|.))
+import Data.Bytes.Parser.Internal (Parser, Result (..), swapArray128, swapArray16, swapArray256, swapArray32, swapArray64, uneffectful)
+import Data.Bytes.Types (Bytes (..))
+import Data.Int (Int16, Int32, Int64, Int8)
+import Data.Primitive (ByteArray (..), PrimArray (..))
+import Data.WideWord (Word128 (Word128), Word256 (Word256))
+import Data.Word (Word16, Word32, Word64, Word8)
+import GHC.ByteOrder (ByteOrder (BigEndian, LittleEndian), targetByteOrder)
 
 import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Parser as P
@@ -65,14 +64,18 @@ import qualified Data.Primitive as PM
 word8 :: e -> Parser e s Word8
 word8 = P.any
 
--- | Array of little-endian unsigned 16-bit words. If the host is
--- little-endian, the implementation is optimized to simply @memcpy@
--- bytes into the result array. The result array always has elements
--- in native-endian byte order.
+{- | Array of little-endian unsigned 16-bit words. If the host is
+little-endian, the implementation is optimized to simply @memcpy@
+bytes into the result array. The result array always has elements
+in native-endian byte order.
+-}
 word16Array ::
-     e -- ^ Error message if not enough bytes are present
-  -> Int -- ^ Number of little-endian 16-bit words to expect
-  -> Parser e s (PrimArray Word16) -- ^ Native-endian elements
+  -- | Error message if not enough bytes are present
+  e ->
+  -- | Number of little-endian 16-bit words to expect
+  Int ->
+  -- | Native-endian elements
+  Parser e s (PrimArray Word16)
 word16Array e !n = case targetByteOrder of
   LittleEndian -> fmap (asWord16s . Bytes.toByteArrayClone) (P.take e (n * 2))
   BigEndian -> do
@@ -82,9 +85,12 @@ word16Array e !n = case targetByteOrder of
 
 -- | Parse an array of little-endian unsigned 32-bit words.
 word32Array ::
-     e -- ^ Error message if not enough bytes are present
-  -> Int -- ^ Number of little-endian 32-bit words to consume
-  -> Parser e s (PrimArray Word32) -- ^ Native-endian elements
+  -- | Error message if not enough bytes are present
+  e ->
+  -- | Number of little-endian 32-bit words to consume
+  Int ->
+  -- | Native-endian elements
+  Parser e s (PrimArray Word32)
 word32Array e !n = case targetByteOrder of
   LittleEndian -> fmap (asWord32s . Bytes.toByteArrayClone) (P.take e (n * 4))
   BigEndian -> do
@@ -94,9 +100,12 @@ word32Array e !n = case targetByteOrder of
 
 -- | Parse an array of little-endian unsigned 64-bit words.
 word64Array ::
-     e -- ^ Error message if not enough bytes are present
-  -> Int -- ^ Number of little-endian 64-bit words to consume
-  -> Parser e s (PrimArray Word64) -- ^ Native-endian elements
+  -- | Error message if not enough bytes are present
+  e ->
+  -- | Number of little-endian 64-bit words to consume
+  Int ->
+  -- | Native-endian elements
+  Parser e s (PrimArray Word64)
 word64Array e !n = case targetByteOrder of
   LittleEndian -> fmap (asWord64s . Bytes.toByteArrayClone) (P.take e (n * 8))
   BigEndian -> do
@@ -106,9 +115,12 @@ word64Array e !n = case targetByteOrder of
 
 -- | Parse an array of little-endian unsigned 128-bit words.
 word128Array ::
-     e -- ^ Error message if not enough bytes are present
-  -> Int -- ^ Number of little-endian 128-bit words to consume
-  -> Parser e s (PrimArray Word128) -- ^ Native-endian elements
+  -- | Error message if not enough bytes are present
+  e ->
+  -- | Number of little-endian 128-bit words to consume
+  Int ->
+  -- | Native-endian elements
+  Parser e s (PrimArray Word128)
 word128Array e !n = case targetByteOrder of
   LittleEndian -> fmap (asWord128s . Bytes.toByteArrayClone) (P.take e (n * 16))
   BigEndian -> do
@@ -118,9 +130,12 @@ word128Array e !n = case targetByteOrder of
 
 -- | Parse an array of little-endian unsigned 256-bit words.
 word256Array ::
-     e -- ^ Error message if not enough bytes are present
-  -> Int -- ^ Number of little-endian 256-bit words to consume
-  -> Parser e s (PrimArray Word256) -- ^ Native-endian elements
+  -- | Error message if not enough bytes are present
+  e ->
+  -- | Number of little-endian 256-bit words to consume
+  Int ->
+  -- | Native-endian elements
+  Parser e s (PrimArray Word256)
 word256Array e !n = case targetByteOrder of
   LittleEndian -> fmap (asWord256s . Bytes.toByteArrayClone) (P.take e (n * 32))
   BigEndian -> do
@@ -130,9 +145,12 @@ word256Array e !n = case targetByteOrder of
 
 -- | Parse an array of little-endian signed 64-bit words.
 int64Array ::
-     e -- ^ Error message if not enough bytes are present
-  -> Int -- ^ Number of little-endian 64-bit words to expect
-  -> Parser e s (PrimArray Int64) -- ^ Native-endian elements
+  -- | Error message if not enough bytes are present
+  e ->
+  -- | Number of little-endian 64-bit words to expect
+  Int ->
+  -- | Native-endian elements
+  Parser e s (PrimArray Int64)
 int64Array e !n = do
   PrimArray x <- word64Array e n
   pure (PrimArray x)
@@ -154,58 +172,64 @@ asWord256s (ByteArray x) = PrimArray x
 
 -- | Unsigned 16-bit word.
 word16 :: e -> Parser e s Word16
-word16 e = uneffectful $ \chunk -> if length chunk >= 2
-  then
-    let wa = PM.indexByteArray (array chunk) (offset chunk) :: Word8
-        wb = PM.indexByteArray (array chunk) (offset chunk + 1) :: Word8
-     in Success
-          (fromIntegral @Word @Word16 (unsafeShiftL (fromIntegral wb) 8 .|. fromIntegral wa))
-          (offset chunk + 2) (length chunk - 2)
-  else Failure e
+word16 e = uneffectful $ \chunk ->
+  if length chunk >= 2
+    then
+      let wa = PM.indexByteArray (array chunk) (offset chunk) :: Word8
+          wb = PM.indexByteArray (array chunk) (offset chunk + 1) :: Word8
+       in Success
+            (fromIntegral @Word @Word16 (unsafeShiftL (fromIntegral wb) 8 .|. fromIntegral wa))
+            (offset chunk + 2)
+            (length chunk - 2)
+    else Failure e
 
 -- | Unsigned 32-bit word.
 word32 :: e -> Parser e s Word32
-word32 e = uneffectful $ \chunk -> if length chunk >= 4
-  then
-    let wa = PM.indexByteArray (array chunk) (offset chunk) :: Word8
-        wb = PM.indexByteArray (array chunk) (offset chunk + 1) :: Word8
-        wc = PM.indexByteArray (array chunk) (offset chunk + 2) :: Word8
-        wd = PM.indexByteArray (array chunk) (offset chunk + 3) :: Word8
-     in Success
-          (fromIntegral @Word @Word32
-            ( unsafeShiftL (fromIntegral wd) 24 .|.
-              unsafeShiftL (fromIntegral wc) 16 .|.
-              unsafeShiftL (fromIntegral wb) 8 .|.
-              fromIntegral wa
+word32 e = uneffectful $ \chunk ->
+  if length chunk >= 4
+    then
+      let wa = PM.indexByteArray (array chunk) (offset chunk) :: Word8
+          wb = PM.indexByteArray (array chunk) (offset chunk + 1) :: Word8
+          wc = PM.indexByteArray (array chunk) (offset chunk + 2) :: Word8
+          wd = PM.indexByteArray (array chunk) (offset chunk + 3) :: Word8
+       in Success
+            ( fromIntegral @Word @Word32
+                ( unsafeShiftL (fromIntegral wd) 24
+                    .|. unsafeShiftL (fromIntegral wc) 16
+                    .|. unsafeShiftL (fromIntegral wb) 8
+                    .|. fromIntegral wa
+                )
             )
-          )
-          (offset chunk + 4) (length chunk - 4)
-  else Failure e
+            (offset chunk + 4)
+            (length chunk - 4)
+    else Failure e
 
 -- | Unsigned 64-bit word.
 word64 :: e -> Parser e s Word64
-word64 e = uneffectful $ \chunk -> if length chunk >= 8
-  then
-    let wa = PM.indexByteArray (array chunk) (offset chunk) :: Word8
-        wb = PM.indexByteArray (array chunk) (offset chunk + 1) :: Word8
-        wc = PM.indexByteArray (array chunk) (offset chunk + 2) :: Word8
-        wd = PM.indexByteArray (array chunk) (offset chunk + 3) :: Word8
-        we = PM.indexByteArray (array chunk) (offset chunk + 4) :: Word8
-        wf = PM.indexByteArray (array chunk) (offset chunk + 5) :: Word8
-        wg = PM.indexByteArray (array chunk) (offset chunk + 6) :: Word8
-        wh = PM.indexByteArray (array chunk) (offset chunk + 7) :: Word8
-     in Success
-          ( unsafeShiftL (fromIntegral wh) 56 .|.
-            unsafeShiftL (fromIntegral wg) 48 .|.
-            unsafeShiftL (fromIntegral wf) 40 .|.
-            unsafeShiftL (fromIntegral we) 32 .|.
-            unsafeShiftL (fromIntegral wd) 24 .|.
-            unsafeShiftL (fromIntegral wc) 16 .|.
-            unsafeShiftL (fromIntegral wb) 8 .|.
-            fromIntegral wa
-          )
-          (offset chunk + 8) (length chunk - 8)
-  else Failure e
+word64 e = uneffectful $ \chunk ->
+  if length chunk >= 8
+    then
+      let wa = PM.indexByteArray (array chunk) (offset chunk) :: Word8
+          wb = PM.indexByteArray (array chunk) (offset chunk + 1) :: Word8
+          wc = PM.indexByteArray (array chunk) (offset chunk + 2) :: Word8
+          wd = PM.indexByteArray (array chunk) (offset chunk + 3) :: Word8
+          we = PM.indexByteArray (array chunk) (offset chunk + 4) :: Word8
+          wf = PM.indexByteArray (array chunk) (offset chunk + 5) :: Word8
+          wg = PM.indexByteArray (array chunk) (offset chunk + 6) :: Word8
+          wh = PM.indexByteArray (array chunk) (offset chunk + 7) :: Word8
+       in Success
+            ( unsafeShiftL (fromIntegral wh) 56
+                .|. unsafeShiftL (fromIntegral wg) 48
+                .|. unsafeShiftL (fromIntegral wf) 40
+                .|. unsafeShiftL (fromIntegral we) 32
+                .|. unsafeShiftL (fromIntegral wd) 24
+                .|. unsafeShiftL (fromIntegral wc) 16
+                .|. unsafeShiftL (fromIntegral wb) 8
+                .|. fromIntegral wa
+            )
+            (offset chunk + 8)
+            (length chunk - 8)
+    else Failure e
 
 -- | Unsigned 256-bit word.
 word256 :: e -> Parser e s Word256
