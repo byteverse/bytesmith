@@ -1,8 +1,9 @@
 # Revision history for bytesmith
 
-## 0.3.11.1 -- 2024-02-13
+## 0.3.11.1 -- 2024-02-28
 
 * Update package metadata.
+* Remove dependency on `run-st` library.
 
 ## 0.3.11.0 -- 2024-01-05
 
