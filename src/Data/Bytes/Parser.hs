@@ -79,6 +79,7 @@ module Data.Bytes.Parser
 
     -- * Repetition
   , replicate
+  , listUntilEoi
 
     -- * Subparsing
   , delimit
@@ -104,23 +105,29 @@ module Data.Bytes.Parser
     -- of monadic @>>=@ can be helpful. If @C#@, @I#@, etc. never
     -- get used in your original source code, GHC will not introduce them.
   , bindFromCharToLifted
+  , bindFromCharToByteArrayIntInt
   , bindFromLiftedToIntPair
   , bindFromLiftedToInt
   , bindFromIntToIntPair
   , bindFromCharToIntPair
+  , bindFromLiftedToByteArrayIntInt
+  , bindFromByteArrayIntIntToLifted
   , bindFromMaybeCharToIntPair
   , bindFromMaybeCharToLifted
 
     -- * Specialized Pure
   , pureIntPair
+  , pureByteArrayIntInt
 
     -- * Specialized Fail
   , failIntPair
+  , failByteArrayIntInt
   ) where
 
 import Prelude hiding (any, fail, length, replicate, take, takeWhile)
 
 import Data.Bytes.Parser.Internal (Parser (..), Result#, ST#, boxBytes, fail, unboxBytes, uneffectful, uneffectful#, uneffectfulInt#)
+import Data.Bytes.Parser.Internal (failByteArrayIntInt)
 import Data.Bytes.Parser.Types (Result (Failure, Success), Slice (Slice))
 import Data.Bytes.Parser.Unsafe (cursor, expose, unconsume)
 import Data.Bytes.Types (Bytes (..), BytesN (BytesN))
@@ -128,6 +135,7 @@ import Data.Primitive (ByteArray (..))
 import Data.Primitive.Contiguous (Contiguous, Element)
 import Foreign.C.String (CString)
 import GHC.Exts (Char#, Int (I#), Int#, Word#, runRW#, (+#), (-#), (>=#))
+import GHC.Exts (ByteArray#)
 import GHC.ST (ST (..))
 import GHC.Word (Word32 (W32#), Word8)
 
@@ -135,6 +143,7 @@ import qualified Arithmetic.Nat as Nat
 import qualified Arithmetic.Types as Arithmetic
 import qualified Data.Bytes as B
 import qualified Data.Bytes.Parser.Internal as Internal
+import qualified Data.List as List
 import qualified Data.Primitive as PM
 import qualified Data.Primitive.Contiguous as C
 import qualified GHC.Exts as Exts
@@ -696,6 +705,17 @@ bindFromCharToLifted (Parser f) g =
             runParser (g y) (# arr, b, c #) s1
     )
 
+bindFromCharToByteArrayIntInt :: Parser s e Char# -> (Char# -> Parser s e (# ByteArray#, Int#, Int# #)) -> Parser s e (# ByteArray#, Int#, Int# #)
+{-# INLINE bindFromCharToByteArrayIntInt #-}
+bindFromCharToByteArrayIntInt (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
+
 bindFromCharToIntPair :: Parser s e Char# -> (Char# -> Parser s e (# Int#, Int# #)) -> Parser s e (# Int#, Int# #)
 {-# INLINE bindFromCharToIntPair #-}
 bindFromCharToIntPair (Parser f) g =
@@ -710,6 +730,34 @@ bindFromCharToIntPair (Parser f) g =
 bindFromLiftedToInt :: Parser s e a -> (a -> Parser s e Int#) -> Parser s e Int#
 {-# INLINE bindFromLiftedToInt #-}
 bindFromLiftedToInt (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
+
+bindFromByteArrayIntIntToLifted ::
+     Parser s e (# ByteArray#, Int#, Int# #)
+  -> ((# ByteArray#, Int#, Int# #) -> Parser s e a)
+  -> Parser s e a
+{-# INLINE bindFromByteArrayIntIntToLifted #-}
+bindFromByteArrayIntIntToLifted (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
+
+bindFromLiftedToByteArrayIntInt ::
+     Parser s e a
+  -> (a -> Parser s e (# ByteArray#, Int#, Int# #))
+  -> Parser s e (# ByteArray#, Int#, Int# #)
+{-# INLINE bindFromLiftedToByteArrayIntInt #-}
+bindFromLiftedToByteArrayIntInt (Parser f) g =
   Parser
     ( \x@(# arr, _, _ #) s0 -> case f x s0 of
         (# s1, r0 #) -> case r0 of
@@ -773,6 +821,14 @@ pureIntPair ::
   Parser s e (# Int#, Int# #)
 {-# INLINE pureIntPair #-}
 pureIntPair a =
+  Parser
+    (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
+
+pureByteArrayIntInt ::
+  (# ByteArray#, Int#, Int# #) ->
+  Parser s e (# ByteArray#, Int#, Int# #)
+{-# INLINE pureByteArrayIntInt #-}
+pureByteArrayIntInt a =
   Parser
     (\(# _, b, c #) s -> (# s, (# | (# a, b, c #) #) #))
 
@@ -847,6 +903,20 @@ delimit esz eleftovers (I# n) (Parser f) =
               _ -> (# s1, (# eleftovers | #) #)
         _ -> (# s0, (# esz | #) #)
     )
+
+{- | Apply the parser repeatedly until there is no more input left
+to consume. Collects the results into a list.
+-}
+listUntilEoi ::
+     Parser e s a -- ^ Parser to repeatedly apply until input is exhausted
+  -> Parser e s [a]
+listUntilEoi p = go []
+  where
+  go !acc = isEndOfInput >>= \case
+    True -> pure $! List.reverse acc
+    False -> do
+      a <- p
+      go (a : acc)
 
 {- | Replicate a parser @n@ times, writing the results into
 an array of length @n@. For @Array@ and @SmallArray@, this

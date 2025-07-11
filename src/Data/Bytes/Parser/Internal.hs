@@ -25,6 +25,7 @@ module Data.Bytes.Parser.Internal
   , unboxBytes
   , unboxResult
   , fail
+  , failByteArrayIntInt
   , indexLatinCharArray
   , upcastUnitSuccess
   -- Swapping
@@ -44,6 +45,7 @@ import Data.Kind (Type)
 import Data.Primitive (ByteArray (ByteArray))
 import Data.Word (Word8)
 import GHC.Exts (ByteArray#, Char (C#), Int (I#), Int#, RuntimeRep, State#, TYPE)
+import GHC.Exts (RuntimeRep(IntRep, BoxedRep, TupleRep), Levity(Unlifted))
 
 import qualified Control.Applicative
 import qualified Control.Monad
@@ -128,6 +130,13 @@ fail ::
   Parser e s a
 {-# INLINE fail #-}
 fail e = uneffectful $ \_ -> Failure e
+
+failByteArrayIntInt :: forall e s (a :: TYPE ('TupleRep '[ 'BoxedRep 'Unlifted, 'IntRep, 'IntRep ])).
+  -- | Error message
+  e ->
+  Parser e s a
+{-# INLINE failByteArrayIntInt #-}
+failByteArrayIntInt e = Parser (\_ s0 -> (# s0, (# e | #)  #))
 
 instance Applicative (Parser e s) where
   pure = pureParser
