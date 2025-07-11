@@ -38,10 +38,6 @@ module Data.Bytes.Parser.BigEndian
 
 import Prelude hiding (any, fail, length, takeWhile)
 
-#if MIN_VERSION_base(4,18,0)
-#else
-import Control.Applicative (liftA2)
-#endif
 import Data.Bits (unsafeShiftL, (.|.))
 import Data.Bytes.Parser.Internal (Parser, Result (..), swapArray128, swapArray16, swapArray256, swapArray32, swapArray64, uneffectful)
 import Data.Bytes.Types (Bytes (..))

@@ -25,12 +25,7 @@ module Data.Bytes.Parser.Rebindable
 import Data.Bytes.Parser.Internal (Parser (..))
 import GHC.Exts (RuntimeRep (..), TYPE)
 import Prelude ()
-
-#if MIN_VERSION_base(4,16,0)
 import GHC.Exts (LiftedRep)
-#else
-type LiftedRep = 'LiftedRep
-#endif
 
 class Bind (ra :: RuntimeRep) (rb :: RuntimeRep) where
   (>>=) ::

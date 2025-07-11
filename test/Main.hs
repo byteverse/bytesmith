@@ -7,10 +7,6 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-#if MIN_VERSION_base(4,18,0)
-#else
-import Control.Applicative (liftA2)
-#endif
 import Control.Monad (replicateM)
 import Control.Monad.ST (runST)
 import Data.Bytes.Parser (Slice (Slice))

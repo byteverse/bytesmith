@@ -701,11 +701,7 @@ upcastWord64Result :: Result# e Word# -> Result# e Word64
 {-# inline upcastWord64Result #-}
 upcastWord64Result (# e | #) = (# e | #)
 upcastWord64Result (# | (# a, b, c #) #) = (# | (# W64# (
-#if MIN_VERSION_base(4,17,0)
     Exts.wordToWord64# a
-#else
-    a
-#endif
     ), b, c #) #)
 {- FOURMOLU_ENABLE -}
 
@@ -774,9 +770,7 @@ upcastWord16Result :: Result# e Word# -> Result# e Word16
 {-# inline upcastWord16Result #-}
 upcastWord16Result (# e | #) = (# e | #)
 upcastWord16Result (# | (# a, b, c #) #) = (# | (# W16# (
-#if MIN_VERSION_base(4,16,0)
   Exts.wordToWord16#
-#endif
   a), b, c #) #)
 
 -- Precondition: the word is small enough
@@ -784,9 +778,7 @@ upcastWord32Result :: Result# e Word# -> Result# e Word32
 {-# inline upcastWord32Result #-}
 upcastWord32Result (# e | #) = (# e | #)
 upcastWord32Result (# | (# a, b, c #) #) = (# | (# W32# (
-#if MIN_VERSION_base(4,16,0)
   Exts.wordToWord32#
-#endif
   a), b, c #) #)
 
 -- Precondition: the word is small enough
@@ -794,9 +786,7 @@ upcastWord8Result :: Result# e Word# -> Result# e Word8
 {-# inline upcastWord8Result #-}
 upcastWord8Result (# e | #) = (# e | #)
 upcastWord8Result (# | (# a, b, c #) #) = (# | (# W8# (
-#if MIN_VERSION_base(4,16,0)
   Exts.wordToWord8#
-#endif
   a), b, c #) #)
 {- FOURMOLU_ENABLE -}
 
@@ -1188,9 +1178,7 @@ hexFixedWord32 e = Parser
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
       (# | (# a, b, c #) #) -> (# s1, (# | (# W32# (
-#if MIN_VERSION_base(4,16,0)
         Exts.wordToWord32#
-#endif
         a), b, c #) #) #)
   )
 {- FOURMOLU_ENABLE -}
@@ -1239,12 +1227,7 @@ hexFixedWord64 e = Parser
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
       (# | (# a, b, c #) #) -> (# s1, (# | (# W64# (
-#if MIN_VERSION_base(4,17,0)
           Exts.wordToWord64# a
-#else
-
-          a
-#endif
           ), b, c #) #) #)
   )
 {- FOURMOLU_ENABLE -}
@@ -1298,9 +1281,7 @@ hexFixedWord16 e = Parser
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
       (# | (# a, b, c #) #) -> (# s1, (# | (# W16# (
-#if MIN_VERSION_base(4,16,0)
         Exts.wordToWord16#
-#endif
         a), b, c #) #) #)
   )
 
@@ -1334,9 +1315,7 @@ hexFixedWord8 e = Parser
     (# s1, r #) -> case r of
       (# err | #) -> (# s1, (# err | #) #)
       (# | (# a, b, c #) #) -> (# s1, (# | (# W8# (
-#if MIN_VERSION_base(4,16,0)
         Exts.wordToWord8#
-#endif
         a), b, c #) #) #)
   )
 {- FOURMOLU_ENABLE -}

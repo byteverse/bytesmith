@@ -46,9 +46,7 @@ any# e = Parser
       let !w0 = Exts.indexWord8Array# arr off
        in if | oneByteChar (W8# w0) ->
                  (# s0, (# | (# chr# (Exts.word2Int# (
-#if MIN_VERSION_base(4,16,0)
                  Exts.word8ToWord#
-#endif
                  w0)), off +# 1#, len -# 1# #) #) #)
              | twoByteChar (W8# w0) ->
                  if | I# len > 1

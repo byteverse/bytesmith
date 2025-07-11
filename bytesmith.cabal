@@ -41,7 +41,7 @@ library
     Data.Bytes.Parser.Types
 
   build-depends:
-    , base                >=4.12    && <5
+    , base                >=4.18    && <5
     , byteslice           >=0.2.6   && <0.3
     , bytestring          >=0.10.8  && <0.13
     , contiguous          >=0.6     && <0.7

@@ -258,17 +258,13 @@ cstring :: e -> CString -> Parser e s ()
 cstring e (Exts.Ptr ptr0) = Parser
   ( \(# arr, off0, len0 #) s ->
     let go !ptr !off !len = case
-#if MIN_VERSION_base(4,16,0)
                  Exts.word8ToWord#
-#endif
             (Exts.indexWord8OffAddr# ptr 0#) of
           0## -> (# s, (# | (# (), off, len #) #) #)
           c -> case len of
             0# -> (# s, (# e | #) #)
             _ -> case Exts.eqWord# c (
-#if MIN_VERSION_base(4,16,0)
                  Exts.word8ToWord#
-#endif
               (Exts.indexWord8Array# arr off)) of
               1# -> go (Exts.plusAddr# ptr 1# ) (off +# 1# ) (len -# 1# )
               _ -> (# s, (# e | #) #)
@@ -593,9 +589,7 @@ unboxWord32 (Parser f) = Parser
     (# s1, r #) -> case r of
       (# e | #) -> (# s1, (# e | #) #)
       (# | (# W32# a, b, c #) #) -> (# s1, (# | (#
-#if MIN_VERSION_base(4,16,0)
         Exts.word32ToWord#
-#endif
         a, b, c #) #) #)
   )
 {- FOURMOLU_ENABLE -}
@@ -621,9 +615,7 @@ boxWord32 (Parser f) = Parser
     (# s1, r #) -> case r of
       (# e | #) -> (# s1, (# e | #) #)
       (# | (# a, b, c #) #) -> (# s1, (# | (# W32# (
-#if MIN_VERSION_base(4,16,0)
         Exts.wordToWord32#
-#endif
         a), b, c #) #) #)
   )
 {- FOURMOLU_ENABLE -}
