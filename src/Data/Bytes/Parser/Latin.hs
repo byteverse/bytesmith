@@ -99,6 +99,7 @@ module Data.Bytes.Parser.Latin
     -- *** Fixed Length
   , hexFixedWord8
   , hexFixedWord16
+  , hexFixedWord16#
   , hexFixedWord32
   , hexFixedWord64
   , hexFixedWord128
@@ -1285,6 +1286,11 @@ hexFixedWord16 e = Parser
         a), b, c #) #) #)
   )
 
+-- | Variant of hexFixedWord16 that returns an unboxed result. The result is
+-- a machine-sized word instead of a 16-bit word, but this function guarantees
+-- that only the low 16 bits may be non-zero. This is helpful because the
+-- result needs to be constructed as a machine-sized word. GHC's primitives
+-- for working with 16-bit words lower to most ISAs poorly.
 hexFixedWord16# :: e -> Parser e s Word#
 {-# noinline hexFixedWord16# #-}
 hexFixedWord16# e = uneffectfulWord# $ \chunk -> if length chunk >= 4
@@ -1295,9 +1301,9 @@ hexFixedWord16# e = uneffectfulWord# $ \chunk -> if length chunk >= 4
         !w3@(W# n3) = oneHex $ PM.indexByteArray (array chunk) (offset chunk + 3)
      in if | w0 .|. w1 .|. w2 .|. w3 /= maxBound ->
              (# |
-                (# (n0 `Exts.timesWord#` 4096##) `Exts.plusWord#`
-                   (n1 `Exts.timesWord#` 256##) `Exts.plusWord#`
-                   (n2 `Exts.timesWord#` 16##) `Exts.plusWord#`
+                (# (n0 `Exts.shiftL#` 12#) `Exts.plusWord#`
+                   (n1 `Exts.shiftL#` 8#) `Exts.plusWord#`
+                   (n2 `Exts.shiftL#` 4#) `Exts.plusWord#`
                    n3
                 ,  unI (offset chunk) +# 4#
                 ,  unI (length chunk) -# 4# #) #)

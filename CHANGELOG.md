@@ -1,5 +1,11 @@
 # Revision history for bytesmith
 
+## 0.3.20.0 -- 2025-07-11
+
+* Add `hexFixedWord16#`
+* Drop support for base < 4.18, clean up CPP
+* Add more levity-monomorphized variants of bind, pure, and fail
+
 ## 0.3.11.1 -- 2024-02-28
 
 * Update package metadata.

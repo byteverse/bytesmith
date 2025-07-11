@@ -106,6 +106,7 @@ module Data.Bytes.Parser
     -- get used in your original source code, GHC will not introduce them.
   , bindFromCharToLifted
   , bindFromCharToByteArrayIntInt
+  , bindFromWordToByteArrayIntInt
   , bindFromLiftedToIntPair
   , bindFromLiftedToInt
   , bindFromIntToIntPair
@@ -524,15 +525,15 @@ peekRemaining = uneffectful $ \b@(Bytes _ off len) ->
 -- | Skip while the predicate is matched. This is always inlined.
 skipWhile :: (Word8 -> Bool) -> Parser e s ()
 {-# INLINE skipWhile #-}
-skipWhile f = go
+skipWhile f = goSkipWhile
  where
-  go =
+  goSkipWhile =
     isEndOfInput >>= \case
       True -> pure ()
       False -> do
         w <- anyUnsafe
         if f w
-          then go
+          then goSkipWhile
           else unconsume 1
 
 {- | The parser @satisfy p@ succeeds for any byte for which the
@@ -689,6 +690,17 @@ mapErrorEffectfully f (Parser g) =
 bindFromCharToLifted :: Parser s e Char# -> (Char# -> Parser s e a) -> Parser s e a
 {-# INLINE bindFromCharToLifted #-}
 bindFromCharToLifted (Parser f) g =
+  Parser
+    ( \x@(# arr, _, _ #) s0 -> case f x s0 of
+        (# s1, r0 #) -> case r0 of
+          (# e | #) -> (# s1, (# e | #) #)
+          (# | (# y, b, c #) #) ->
+            runParser (g y) (# arr, b, c #) s1
+    )
+
+bindFromWordToByteArrayIntInt :: Parser s e Word# -> (Word# -> Parser s e (# ByteArray#, Int#, Int# #)) -> Parser s e (# ByteArray#, Int#, Int# #)
+{-# INLINE bindFromWordToByteArrayIntInt #-}
+bindFromWordToByteArrayIntInt (Parser f) g =
   Parser
     ( \x@(# arr, _, _ #) s0 -> case f x s0 of
         (# s1, r0 #) -> case r0 of
