@@ -1,5 +1,9 @@
 # Revision history for bytesmith
 
+## 0.3.14.0 -- 2025-??-??
+
+* Add `take` for ASCII parser.
+
 ## 0.3.13.0 -- 2025-07-11
 
 * Add `hexFixedWord16#`

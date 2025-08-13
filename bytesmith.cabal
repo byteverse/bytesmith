@@ -1,6 +1,6 @@
 cabal-version:   3.0
 name:            bytesmith
-version:         0.3.13.0
+version:         0.3.14.0
 synopsis:        Nonresumable byte parser
 description:
   Parse bytes as fast as possible. This is a nonresumable parser
@@ -48,6 +48,7 @@ library
     , natural-arithmetic  >=0.1.3
     , primitive           >=0.7     && <0.10
     , text-short          >=0.1.3   && <0.2
+    , text                >=0.2.1
     , wide-word           >=0.1.0.9 && <0.2
 
   hs-source-dirs:  src

@@ -32,6 +32,7 @@ module Data.Bytes.Parser.Ascii
   , opt
 
     -- * Match Many
+  , take
   , shortTrailedBy
   , takeShortWhile
 
@@ -52,7 +53,7 @@ module Data.Bytes.Parser.Ascii
   , Latin.decWord32
   ) where
 
-import Prelude hiding (any, fail, length, takeWhile)
+import Prelude hiding (any, fail, length, takeWhile, take)
 
 import Control.Monad.ST (runST)
 import Data.Bits (clearBit)
@@ -62,9 +63,11 @@ import Data.Char (ord)
 import Data.Text.Short (ShortText)
 import Data.Word (Word8)
 import GHC.Exts (Char (C#), Char#, Int (I#), Int#, chr#, gtChar#, indexCharArray#, ord#, (+#), (-#), (<#))
+import Data.Text.Internal (Text(Text))
 
 import qualified Data.ByteString.Short.Internal as BSS
 import qualified Data.Bytes as Bytes
+import qualified Data.Bytes.Parser as Parser
 import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.Bytes.Parser.Unsafe as Unsafe
 import qualified Data.Primitive as PM
@@ -102,6 +105,15 @@ skipTrailedBy e !c = do
           then pure ()
           else go
   go
+
+-- | Consume a fixed number of ASCII characters (all less than codepoint 128).
+take :: e -> Int -> Parser e s Text
+{-# INLINE take #-}
+take e !n = do
+  bs@(Bytes arr off len) <- Parser.take e n
+  if Bytes.all (\w -> w < 128) bs
+    then pure (Text arr off len)
+    else Parser.fail e
 
 {- | Consume characters matching the predicate. The stops when it
 encounters a non-matching character or when it encounters a byte
