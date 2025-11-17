@@ -1,6 +1,6 @@
 # Revision history for bytesmith
 
-## 0.3.14.0 -- 2025-??-??
+## 0.3.14.0 -- 2025-11-17
 
 * Add `take` for ASCII parser.
 
