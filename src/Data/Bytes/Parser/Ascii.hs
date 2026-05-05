@@ -33,6 +33,7 @@ module Data.Bytes.Parser.Ascii
 
     -- * Match Many
   , take
+  , takeTrailedBy
   , shortTrailedBy
   , takeWhile
   , takeShortWhile
@@ -167,6 +168,15 @@ shortTrailedBy e !c = do
     TS.fromShortByteStringUnsafe $
       byteArrayToShortByteString $
         r
+
+takeTrailedBy :: e -> Char -> Parser e s Text
+takeTrailedBy e !c = do
+  !start <- Unsafe.cursor
+  skipTrailedBy e c
+  end <- Unsafe.cursor
+  src <- Unsafe.expose
+  let !len = end - start - 1
+  pure $! Text src start len
 
 -- | Consumes and returns the next character in the input.
 any :: e -> Parser e s Char
