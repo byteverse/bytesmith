@@ -34,6 +34,7 @@ module Data.Bytes.Parser.Ascii
     -- * Match Many
   , take
   , shortTrailedBy
+  , takeWhile
   , takeShortWhile
 
     -- * Skip
@@ -135,6 +136,16 @@ takeShortWhile p = do
     TS.fromShortByteStringUnsafe $
       byteArrayToShortByteString $
         r
+
+takeWhile :: (Char -> Bool) -> Parser e s Text
+{-# INLINE takeWhile #-}
+takeWhile p = do
+  !start <- Unsafe.cursor
+  skipWhile p
+  end <- Unsafe.cursor
+  src <- Unsafe.expose
+  let len = end - start
+  pure $! Text src start len
 
 {- | Consume input through the next occurrence of the target
 character and return the consumed input, excluding the
