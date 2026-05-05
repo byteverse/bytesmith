@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE DataKinds #-}
@@ -71,6 +72,10 @@ import qualified Data.Bytes.Parser as Parser
 import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.Bytes.Parser.Unsafe as Unsafe
 import qualified Data.Primitive as PM
+#if !MIN_VERSION_text(2, 1, 0)
+import qualified Data.Array.Byte as BA
+import qualified Data.Text.Array as T
+#endif
 import qualified Data.Text.Short.Unsafe as TS
 
 {- | Consume the next character, failing if it does not match the expected
@@ -110,10 +115,18 @@ skipTrailedBy e !c = do
 take :: e -> Int -> Parser e s Text
 {-# INLINE take #-}
 take e !n = do
+#if MIN_VERSION_text(2, 1, 0)
   bs@(Bytes arr off len) <- Parser.take e n
   if Bytes.all (\w -> w < 128) bs
     then pure (Text arr off len)
     else Parser.fail e
+#else
+  bs@(Bytes (BA.ByteArray arr) off len) <- Parser.take e n
+  if Bytes.all (\w -> w < 128) bs
+    then pure (Text (T.ByteArray arr) off len)
+    else Parser.fail e
+#endif
+
 
 {- | Consume characters matching the predicate. The stops when it
 encounters a non-matching character or when it encounters a byte
