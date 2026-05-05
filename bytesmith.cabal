@@ -48,7 +48,7 @@ library
     , natural-arithmetic  >=0.1.3
     , primitive           >=0.7     && <0.10
     , text-short          >=0.1.3   && <0.2
-    , text                >=0.2.1
+    , text                >=2.1
     , wide-word           >=0.1.0.9 && <0.2
 
   hs-source-dirs:  src
