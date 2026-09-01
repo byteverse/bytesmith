@@ -364,6 +364,8 @@ tests =
             P.parseBytes (Latin.hexFixedWord16 ()) (bytes "") @=? P.Failure ()
         , testCase "D" $
             P.parseBytes (Latin.hexFixedWord16 ()) (bytes "A!A!") @=? P.Failure ()
+        , testCase "E" $
+            P.parseBytes (Latin.hexFixedWord16 ()) (bytes "FFFF") @=? P.Success (Slice 5 0 0xFFFF)
         ]
     , testGroup
         "hexFixedWord32"
